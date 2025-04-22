@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Positronic Brain</title>
+    <!-- Cyberpunk font -->
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        /* Reset & Base */
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            display: flex;
+            height: 100vh;
+            font-family: 'Orbitron', sans-serif;
+            background: #0a0a0a;
+            color: #e0e0e0;
+        }
+        /* Sidebar */
+        #sidebar {
+            width: 300px;
+            background: rgba(20,20,20,0.95);
+            border-right: 1px solid #333;
+            padding: 20px;
+            overflow-y: auto;
+        }
+        #sidebar h2 {
+            color: #ff66cc;
+            text-shadow: 0 0 8px #ff66cc;
+            margin-bottom: 15px;
+            font-size: 1.4em;
+        }
+        .control-group {
+            margin-bottom: 20px;
+        }
+        .control-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-size: 0.9em;
+            color: #39ff14;
+        }
+        .control-group input[type=range],
+        .control-group input[type=text] {
+            width: 100%;
+            padding: 5px;
+            border-radius: 4px;
+            border: 1px solid #333;
+            background: #111;
+            color: #e0e0e0;
+        }
+        .button {
+            width: 100%;
+            padding: 10px;
+            margin-top: 5px;
+            background: #ff66cc;
+            border: none;
+            border-radius: 6px;
+            color: #0a0a0a;
+            font-weight: bold;
+            cursor: pointer;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            transition: box-shadow 0.2s;
+        }
+        .button:hover {
+            box-shadow: 0 0 10px #ff66cc;
+        }
+        hr.separator {
+            border: none;
+            border-top: 1px solid #333;
+            margin: 20px 0;
+        }
+        /* Main Context View */
+        #main {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+        #main h1 {
+            text-align: center;
+            padding: 15px;
+            background: #111;
+            color: #39ff14;
+            text-shadow: 0 0 5px #39ff14;
+            border-bottom: 1px solid #333;
+            border-radius: 0 0 8px 8px;
+        }
+        #context-view {
+            flex: 1;
+            margin: 20px;
+            background: #111;
+            color: #39ff14;
+            border-radius: 8px;
+            padding: 20px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 0.9em;
+            line-height: 1.4;
+            box-shadow: inset 0 0 10px #39ff14;
+            white-space: pre-wrap;
+        }
+    </style>
+</head>
+<body>
+    <!-- Sidebar Controls -->
+    <aside id="sidebar">
+        <h2>Controls</h2>
+        <!-- Sampling -->
+        <div class="control-group">
+            <label for="temperature">Temperature</label>
+            <input type="range" id="temperature" min="0.1" max="2.0" step="0.1" value="0.6">
+        </div>
+        <div class="control-group">
+            <label for="top-p">Top-P</label>
+            <input type="range" id="top-p" min="0.1" max="1.0" step="0.05" value="1.0">
+        </div>
+        <div class="control-group">
+            <label for="top-k">Top-K</label>
+            <input type="range" id="top-k" min="1" max="100" step="1" value="50">
+        </div>
+        <div class="control-group">
+            <label for="repetition-penalty">Repetition Penalty</label>
+            <input type="range" id="repetition-penalty" min="1.0" max="2.0" step="0.05" value="1.1">
+        </div>
+        <div class="control-group">
+            <label><input type="checkbox" id="force-accept"> Force Accept EOS</label>
+        </div>
+        <button id="apply-sampler" class="button">Update Sampler</button>
+        <hr class="separator">
+        <!-- Phrase Biasing -->
+        <h2>Token Bias</h2>
+        <div class="control-group">
+            <label for="phrase">Phrase</label>
+            <input type="text" id="phrase" placeholder="Enter word or phrase">
+        </div>
+        <div class="control-group">
+            <label for="phrase-bias">Bias Value</label>
+            <input type="range" id="phrase-bias" min="-10" max="10" step="0.5" value="5">
+        </div>
+        <button id="apply-phrase" class="button">Apply Bias</button>
+    </aside>
+
+    <!-- Main Mind View -->
+    <section id="main">
+        <h1>Positronic Brain Mind</h1>
+        <pre id="context-view">Loading AI context...</pre>
+    </section>
+
+    <script>
+        // Establish WebSocket for control feedback (e.g., context ready signal)
+        let ws = new WebSocket(`ws://${location.host}/ws`);
+        ws.onopen = () => console.log('WebSocket connected');
+        ws.onmessage = evt => {
+            // On any message, refresh context view
+            refreshContext();
+        };
+        ws.onclose = () => console.log('WebSocket disconnected');
+
+        // Fetch current context and render
+        async function refreshContext() {
+            try {
+                const res = await fetch('/get_context');
+                if (!res.ok) throw new Error(res.statusText);
+                const data = await res.json();
+                document.getElementById('context-view').textContent = data.context;
+            } catch (e) {
+                console.error('Failed to load context:', e);
+            }
+        }
+        // Poll periodically
+        setInterval(refreshContext, 2000);
+        // Initial load
+        refreshContext();
+
+        // Sampler update
+        document.getElementById('apply-sampler').addEventListener('click', () => {
+            const payload = JSON.stringify({
+                cmd: 'set_sampler',
+                temperature: parseFloat(document.getElementById('temperature').value),
+                top_p: parseFloat(document.getElementById('top-p').value),
+                top_k: parseInt(document.getElementById('top-k').value),
+                repetition_penalty: parseFloat(document.getElementById('repetition-penalty').value),
+                force_accept: document.getElementById('force-accept').checked
+            });
+            ws.send(payload);
+        });
+
+        // Phrase bias update
+        document.getElementById('apply-phrase').addEventListener('click', async () => {
+            const phrase = document.getElementById('phrase').value.trim();
+            const bias = parseFloat(document.getElementById('phrase-bias').value);
+            if (!phrase) return;
+            try {
+                let res = await fetch('/bias_phrase', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ phrase, bias_value: bias })
+                });
+                if (!res.ok) throw new Error(res.statusText);
+                document.getElementById('phrase').value = '';
+            } catch (e) {
+                console.error('Failed to apply bias:', e);
+            }
+        });
+    </script>
+</body>
+</html>

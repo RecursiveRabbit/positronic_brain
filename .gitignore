@@ -1,0 +1,21 @@
+# .gitignore
+
+# Python cache files
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Virtual environment
+venv/
+
+# Backup files
+*.bak
+
+# OS-specific files
+.DS_Store
+Thumbs.db
+
+# IDE/editor configs (optional)
+.vscode/
+.idea/
