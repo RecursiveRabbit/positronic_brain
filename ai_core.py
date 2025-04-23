@@ -783,7 +783,7 @@ async def _generate_next_token(
         # Re-raise to let the main loop handle the error
         raise
 
-async def run_continuous_inference(model, processor, controller, initial_prompt_content=None, output_queue=None, shutdown_event=None, sliding_event=None, resume_context_file=None, shared_state=None, kv_patcher=None):
+async def run_continuous_inference(model, processor, controller, initial_prompt_content=None, output_queue=None, shutdown_event=None, sliding_event=None, resume_context_file=None, shared_state=None, kv_patcher=None, pending_diffs_queue=None, compactor_request_queue=None):
     """Runs continuous inference, pushing output tokens to the queue for consumers
     
     Args:
@@ -1022,7 +1022,8 @@ async def run_continuous_inference(model, processor, controller, initial_prompt_
                     
                     # If update was unsuccessful (very rare), skip to next iteration
                     if not update_success:
-                        await asyncio.sleep(0.1)  # Brief pause
+                        # Sleep for a short time to prevent CPU spinning
+                        await asyncio.sleep(0.01)  # Brief pause
                         continue
                 except Exception as e:
                     error_msg = f"\n\n[ERROR] Context injection error: {type(e).__name__}: {str(e)}\n"
@@ -1111,6 +1112,71 @@ async def run_continuous_inference(model, processor, controller, initial_prompt_
                 except Exception as e:
                     print(f"[Resume] Error preparing or launching save task at end of loop: {e}", file=sys.stderr)
             
+            # --- Process Compactor Embedding Requests ---
+            if compactor_request_queue and not compactor_request_queue.empty():
+                processed_requests = 0
+                while processed_requests < config.MAX_REQUESTS_PER_CYCLE and not compactor_request_queue.empty():
+                    try:
+                        reply_future, position, window_size, original_token_id = compactor_request_queue.get_nowait()
+                        processed_requests += 1
+
+                        # Skip if future is already completed or cancelled
+                        if reply_future.done() or reply_future.cancelled():
+                            compactor_request_queue.task_done()
+                            continue
+
+                        try:
+                            # Get current sequence length
+                            current_seq_len = input_ids.shape[1]
+                            
+                            # Check if position is valid
+                            if position < 0 or position >= current_seq_len:
+                                raise ValueError(f"Invalid position {position} for sequence length {current_seq_len}")
+                            
+                            # Calculate slice boundaries (handle edges)
+                            start = max(0, position - window_size // 2)
+                            end = min(current_seq_len, position + window_size // 2 + 1)
+                            repair_index_in_segment = position - start
+                            
+                            # Get embeddings from the embedding matrix
+                            embeddings = model.get_input_embeddings().weight
+                            
+                            # Slice input_ids and get the corresponding embeddings
+                            token_ids_slice = input_ids[0, start:end]
+                            embedding_segment = embeddings[token_ids_slice].clone().detach().contiguous()
+                            
+                            # Slice attention mask
+                            attn_mask_segment = attention_mask[0, start:end].clone().detach().contiguous()
+                            
+                            # Package result for the Future
+                            result_data = {
+                                "input_embeddings_segment": embedding_segment,
+                                "attention_mask_segment": attn_mask_segment,
+                                "repair_index_in_segment": repair_index_in_segment,
+                                "original_token_id": original_token_id,
+                                "global_position_start": start  # Needed to map diff index back
+                            }
+                            
+                            # Send result back to compactor via the Future
+                            reply_future.set_result(result_data)
+                        except Exception as req_e:
+                            print(f"[Embedding Request Error] {req_e}")
+                            # Notify compactor of failure
+                            if not reply_future.done():
+                                reply_future.set_exception(req_e)
+                        finally:
+                            # Always mark task as done
+                            compactor_request_queue.task_done()
+                    except asyncio.QueueEmpty:
+                        break  # No more requests this cycle
+                    except Exception as e:
+                        print(f"[Embedding Request Handler Error] Unexpected error: {e}")
+                        # Continue processing other requests
+                
+                # Only log if we processed some requests
+                if processed_requests > 0:
+                    print(f"[Main Loop] Processed {processed_requests} embedding requests from Compactor")
+            
             # Always yield control to other asyncio tasks at the end of each iteration
             await asyncio.sleep(0.01)
     
@@ -1183,8 +1249,9 @@ async def setup_ai_core(initial_prompt="The simulation awakens. A stream of cons
         }
     }
     
-    # Create the pending diffs queue for Compactor to communicate with main loop
+    # Create queues for Compactor communication
     pending_diffs_queue = asyncio.Queue(maxsize=config.COMPACTOR_BUFFER_SIZE)
+    compactor_request_queue = asyncio.Queue(maxsize=config.COMPACTOR_BUFFER_SIZE)
     
     # Initialize KV Mirror for tracking token context
     global kv_mirror_manager
@@ -1227,5 +1294,6 @@ async def setup_ai_core(initial_prompt="The simulation awakens. A stream of cons
         "initial_prompt_content": effective_initial_prompt,  # Use the loaded resume text or fallback prompt
         "resume_context_file": resume_context_file,  # Pass resume file path to the inference loop
         "shared_state": shared_state,   # Add shared state for UI integration
-        "pending_diffs_queue": pending_diffs_queue  # Queue for Compactor to send diffs to main loop
+        "pending_diffs_queue": pending_diffs_queue,  # Queue for Compactor to send diffs to main loop
+        "compactor_request_queue": compactor_request_queue  # Queue for Compactor to request embeddings
     }

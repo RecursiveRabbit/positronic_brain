@@ -32,9 +32,12 @@ BRIGHTNESS_REPAIR_THRESHOLD = 50.0  # Only repair tokens with brightness below t
 MAX_REPAIR_TOKENS_PER_STEP = 5      # Maximum number of tokens to repair in a single step
 
 # --- Compactor Configuration ---
-COMPACTOR_SLEEP_INTERVAL = 5.0  # Seconds between Compactor repair cycles
-COMPACTOR_BUFFER_SIZE = 10     # Maximum number of diffs that can be queued
-COMPACTOR_ENABLED = True       # Whether the Compactor is enabled
+COMPACTOR_SLEEP_INTERVAL = 5.0       # Seconds between Compactor repair cycles
+COMPACTOR_BUFFER_SIZE = 10          # Maximum number of diffs that can be queued
+COMPACTOR_ENABLED = True            # Whether the Compactor is enabled
+COMPACTOR_WINDOW_SIZE = 16          # Size of context window around repair position
+COMPACTOR_REQUEST_TIMEOUT = 3.0     # Timeout (seconds) for embedding data requests
+MAX_REQUESTS_PER_CYCLE = 5          # Maximum number of embedding requests processed per main loop cycle
 
 # --- Sampling Configuration ---
 @dataclass

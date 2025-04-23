@@ -43,15 +43,17 @@ async def lifespan(app: FastAPI):
         kv_mirror_manager = ai_core.kv_mirror_manager
         diffuser_model = ai_core.diffuser_model
         pending_diffs_queue = ai_components.get('pending_diffs_queue')
+        compactor_request_queue = ai_components.get('compactor_request_queue')
         shutdown_event = ai_components.get('shutdown_event')
         
-        if kv_mirror_manager and diffuser_model and pending_diffs_queue and shutdown_event:
+        if kv_mirror_manager and diffuser_model and pending_diffs_queue and compactor_request_queue and shutdown_event:
             print("Starting Compactor task...")
             compactor_task = asyncio.create_task(
                 compactor_task(
                     kv_mirror_manager=kv_mirror_manager,
                     diffuser_model=diffuser_model,
                     pending_diffs_queue=pending_diffs_queue,
+                    compactor_request_queue=compactor_request_queue,
                     shutdown_event=shutdown_event
                 )
             )
@@ -74,7 +76,10 @@ async def lifespan(app: FastAPI):
                 shutdown_event=ai_components["shutdown_event"],
                 sliding_event=ai_components["sliding_event"],
                 resume_context_file=ai_components.get("resume_context_file"),
-                shared_state=ai_components["shared_state"]
+                shared_state=ai_components["shared_state"],
+                kv_patcher=ai_components.get("kv_patcher"),
+                pending_diffs_queue=ai_components.get("pending_diffs_queue"),
+                compactor_request_queue=ai_components.get("compactor_request_queue")
             )
         )
     except Exception:

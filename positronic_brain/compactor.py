@@ -23,6 +23,7 @@ async def compactor_task(
     kv_mirror_manager: KVMirror,
     diffuser_model: DiffuserModel,
     pending_diffs_queue: asyncio.Queue,
+    compactor_request_queue: asyncio.Queue,
     shutdown_event: asyncio.Event
 ):
     """
@@ -89,30 +90,116 @@ async def compactor_task(
                   f"(avg brightness: {avg_brightness:.2f}). "
                   f"Selecting {len(selected_candidates)} for repair.")
             
-            # --- 3. Prepare Input for Diffuser ---
-            # PLACEHOLDER: This is where we'd get the embeddings for the diffuser
-            # The challenge is how the Compactor gets access to the LLM's embeddings:
-            # Option A: KVMirror also stores embeddings (Memory intensive!)
-            # Option B: ai_core sends segments to Compactor queue (Complex data transfer)
-            # Option C: Compactor reads directly from GPU memory (Requires shared memory/careful sync)
-            # Option D: Simplify - For now, skip repair step and just log candidates
-            
-            # --- PLACEHOLDER for Diffuser Call ---
-            # In a real implementation:
-            # 1. Get relevant embedding segment & attention mask
-            # 2. Call diffuser_runner.compute_diff(...)
-            # 3. Enqueue results
-            
-            # For now, just log what we would attempt to repair
+            # --- 3. Prepare Requests for Embedding Data ---
             if selected_candidates:
-                print(f"[Compactor] Would repair indices: {repair_indices}")
+                print(f"[Compactor] Requesting data for repair indices: {repair_indices}")
                 print(f"[Compactor] Tokens: {[token_id for _, _, _, token_id in selected_candidates]}")
                 print(f"[Compactor] Brightness values: {[brightness for _, brightness, _, _ in selected_candidates]}")
                 
-                # Increment counter for monitoring
-                inc_counter("compactor_repair_cycles")
-                inc_counter("compactor_identified_candidates", len(candidates))
-                inc_counter("compactor_selected_tokens", len(selected_candidates))
+                # Create futures and requests for each candidate
+                futures = []
+                window_size = config.COMPACTOR_WINDOW_SIZE  # Window size for context around repair position
+                
+                # Create request objects for each position
+                for idx, (position, _, instance_id, original_token_id) in enumerate(selected_candidates):
+                    future = asyncio.Future()
+                    futures.append(future)
+                    
+                    # Put request on queue: (reply_future, position, window_size, original_token_id)
+                    request = (future, position, window_size, original_token_id)
+                    try:
+                        await compactor_request_queue.put(request)
+                    except Exception as e:
+                        print(f"[Compactor Error] Failed to queue request: {e}")
+                        future.cancel()  # Cancel this future since we couldn't queue it
+                        futures[idx] = None  # Mark as None to skip it later
+                
+                # Wait for responses with timeout
+                valid_futures = [f for f in futures if f is not None]
+                if not valid_futures:
+                    print("[Compactor] No valid futures to process")
+                    continue
+                    
+                try:
+                    # Wait for all futures with timeout
+                    results = await asyncio.gather(
+                        *valid_futures, 
+                        return_exceptions=True,
+                        timeout=config.COMPACTOR_REQUEST_TIMEOUT
+                    )
+                    
+                    # --- 4. Process Results and Call Diffuser ---
+                    success_count = 0
+                    diff_count = 0
+                    
+                    for result in results:
+                        # Skip exceptions or timeouts
+                        if isinstance(result, Exception):
+                            print(f"[Compactor] Request failed: {result}")
+                            continue
+                            
+                        try:
+                            # Extract data from result
+                            input_embeddings_segment = result["input_embeddings_segment"]
+                            attention_mask_segment = result["attention_mask_segment"]
+                            repair_index_in_segment = result["repair_index_in_segment"]
+                            original_token_id = result["original_token_id"]
+                            global_position_start = result["global_position_start"]
+                            
+                            # We need to convert the repair_index from global to segment-local
+                            repair_indices_local = [repair_index_in_segment]
+                            token_ids_local = [original_token_id]
+                            
+                            # Call diffuser to compute diffs
+                            diff_list = compute_diff(
+                                diffuser_model=diffuser_model,
+                                input_embeddings=input_embeddings_segment,
+                                attention_mask=attention_mask_segment,
+                                token_ids=token_ids_local,
+                                repair_indices=repair_indices_local
+                            )
+                            
+                            # Process the diffs if any were found
+                            if diff_list:
+                                # Adjust indices to global positions
+                                global_diffs = []
+                                for local_pos, old_id, new_id in diff_list:
+                                    # Convert from segment-local to global position
+                                    global_pos = global_position_start + local_pos
+                                    global_diffs.append((global_pos, old_id, new_id))
+                                
+                                # Put each diff on the queue
+                                for diff in global_diffs:
+                                    await pending_diffs_queue.put(diff)
+                                    diff_count += 1
+                                    
+                                success_count += 1
+                        except Exception as proc_e:
+                            print(f"[Compactor Error] Failed to process result: {proc_e}")
+                            print(traceback.format_exc())
+                    
+                    # Log repair statistics
+                    print(f"[Compactor] Successfully computed {success_count}/{len(results)} repairs, generated {diff_count} diffs")
+                    
+                    # Update metrics
+                    inc_counter("compactor_repair_cycles")
+                    inc_counter("compactor_identified_candidates", len(candidates))
+                    inc_counter("compactor_selected_tokens", len(selected_candidates))
+                    inc_counter("compactor_successful_repairs", success_count)
+                    inc_counter("compactor_generated_diffs", diff_count)
+                    
+                except asyncio.TimeoutError:
+                    print(f"[Compactor Warning] Timed out waiting for embedding data after {config.COMPACTOR_REQUEST_TIMEOUT}s")
+                    inc_counter("compactor_request_timeouts")
+                except Exception as e:
+                    print(f"[Compactor Error] Failed while gathering results: {e}")
+                    print(traceback.format_exc())
+                    inc_counter("compactor_gather_errors")
+                    
+                # Cancel any futures that didn't complete
+                for future in valid_futures:
+                    if not future.done():
+                        future.cancel()
             
         except asyncio.CancelledError:
             print("[Compactor] Task cancelled.")
