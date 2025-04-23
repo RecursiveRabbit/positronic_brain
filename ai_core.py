@@ -10,9 +10,13 @@ import torch.nn.functional as F
 import torch.cuda.amp as amp
 import torch.multiprocessing as mp
 from positronic_brain import config
+from positronic_brain.config import (MODEL_NAME, DIFFUSER_MODEL_NAME, MAX_SEQUENCE_LENGTH, TRUST_REMOTE_CODE,
+                                     MAX_NEW_TOKENS, PRUNING_INTERVAL, BRIGHTNESS_ALPHA, BRIGHTNESS_BETA,
+                                     MAX_BEAM_SOURCES)
 from positronic_brain.sampler_types import SamplerState
 from positronic_brain.sampler import select_next_token, top_p_filter, top_k_filter, apply_repetition_penalty
 from positronic_brain.brightness_engine import update_brightness_scores
+from positronic_brain.diffuser_runner import DiffuserModel, get_repaired_tokens
 from positronic_brain.model_io import load_model, move_cache_to_device, truncate_kv_cache, execute_forward_pass
 from positronic_brain.controller import SimpleContextController
 from positronic_brain.vram_monitor import vram_monitor_task
@@ -43,7 +47,12 @@ from positronic_brain.sampler import top_p_filter, top_k_filter, apply_repetitio
 # Global model objects
 model = None
 processor = None
+diffuser_model = None  # Diffuser model for token repair
 sampler_state = SamplerState()  # Global instance of sampler state
+
+# Brightness thresholds for token repair
+BRIGHTNESS_REPAIR_THRESHOLD = 50.0  # Only repair tokens with brightness below this threshold
+MAX_REPAIR_TOKENS_PER_STEP = 5   # Maximum number of tokens to repair in a single step
 
 # Define Shared Event for Sliding Window Activation
 sliding_event = asyncio.Event()
@@ -505,25 +514,83 @@ async def _generate_next_token(
             outputs = type('ModelOutputs', (), {})()
             outputs.attentions = outputs_attentions
             
-            # --- Update Brightness Scores Based on Attention Patterns ---
-            # Only if we have attention data available
-            if outputs_attentions is not None:
-                try:
-                    brightness_results = update_brightness_scores(
-                        kv_mirror_manager=kv_mirror_manager,
-                        outputs=outputs,
-                        alpha=config.BRIGHTNESS_ALPHA,
-                        beta=config.BRIGHTNESS_BETA
+            # Brightness update integration - calculate brightness scores based on attention patterns
+            try:
+                if outputs.attentions is not None:
+                    updated_tokens = update_brightness_scores(
+                        kv_mirror_manager,
+                        outputs,
+                        config.BRIGHTNESS_ALPHA,
+                        config.BRIGHTNESS_BETA
                     )
-                    if 'error' in brightness_results:
-                        print(f"[Brightness Engine WARNING] {brightness_results['error']}")
-                except Exception as e:
-                    print(f"[Brightness Engine ERROR] Failed to update brightness: {type(e).__name__}: {str(e)}")
+                    if updated_tokens:
+                        print(f"[Brightness] Updated {len(updated_tokens)} token brightness scores")
+                        
+                        # TODO: Move token repair to an asynchronous Compactor task
+                        # The current synchronous implementation within _generate_next_token is temporary
+                        # and should be refactored into a background process that doesn't block generation
+                        
+                        # Token repair using diffuser model - only if diffuser_model is initialized
+                        global diffuser_model
+                        if diffuser_model is not None:
+                            # Get tokens with brightness below threshold
+                            snapshot = kv_mirror_manager.snapshot()
+                            tokens = snapshot['tokens']
+                            mirror = snapshot['kv_mirror']
+                            
+                            # Find low-brightness tokens and their positions
+                            low_brightness_positions = []
+                            token_ids = []
+                            
+                            for pos, instance_id in mirror.items():
+                                if instance_id in tokens:
+                                    token = tokens[instance_id]
+                                    token_ids.append(token.token_id)
+                                    if token.brightness < config.BRIGHTNESS_REPAIR_THRESHOLD:
+                                        low_brightness_positions.append(pos)
+                            
+                            # Limit number of repairs per step
+                            if len(low_brightness_positions) > config.MAX_REPAIR_TOKENS_PER_STEP:
+                                low_brightness_positions = low_brightness_positions[:config.MAX_REPAIR_TOKENS_PER_STEP]
+                            
+                            if low_brightness_positions and len(token_ids) > 0:
+                                # Get model hidden states for repair
+                                if hasattr(outputs, 'hidden_states') and outputs.hidden_states is not None:
+                                    hidden_states = outputs.hidden_states[-1]  # Use last layer hidden states
+                                    
+                                    # Get repaired tokens
+                                    repairs = get_repaired_tokens(
+                                        diffuser_model,
+                                        hidden_states,
+                                        attention_mask,
+                                        token_ids,
+                                        low_brightness_positions
+                                    )
+                                    
+                                    if repairs:
+                                        # Apply the repairs to the KV mirror
+                                        repair_diff = [(pos, new_id) for pos, _, new_id in repairs]
+                                        kv_mirror_manager.apply_diff(repair_diff)
+                                        print(f"[Diffuser] Repaired {len(repairs)} low-brightness tokens")
+
+                                        # TODO: Update the model's past_key_values tensor
+                                        # Currently, only the KV Mirror records are updated, but the actual model state
+                                        # isn't modified. This requires embedding the new tokens and patching the
+                                        # corresponding positions in past_key_values to maintain consistency.
+                                        
+                                        # Log the repairs
+                                        for pos, old_id, new_id in repairs:
+                                            print(f"[Diffuser] Pos {pos}: {old_id} → {new_id}")
+            except Exception as e:
+                inc_counter("brightness_update_error")
+                print(f"[Brightness Engine ERROR] {str(e)}")
+                
             outputs.past_key_values = llm_output_past_key_values
             outputs.logits = logits
         except Exception as model_e:
             # Error handling for model execution is handled at a higher level
             raise model_e
+
         
         # Move KV cache to CPU if configured (helps with VRAM management)
         if config.OFFLOAD_KV_CACHE_TO_CPU and past_key_values is not None:
@@ -1057,7 +1124,7 @@ async def setup_ai_core(initial_prompt="The simulation awakens. A stream of cons
                       vram_threshold_percent=80.0, 
                       vram_check_interval=5):
     """Initialize and return core AI components, including sliding event."""
-    global model, processor, sliding_event  # Ensure shared variables are accessible
+    global model, processor, diffuser_model, sliding_event  # Ensure shared variables are accessible
     
     # Load model and processor if not already loaded
     model, processor = load_model(config.config.MODEL_NAME, config.config.TRUST_REMOTE_CODE)
@@ -1101,6 +1168,15 @@ async def setup_ai_core(initial_prompt="The simulation awakens. A stream of cons
             'timestamp': time.time()
         }
     }
+    
+    # Initialize the diffuser model for token repair
+    try:
+        print(f"[Diffuser] Loading diffuser model {config.DIFFUSER_MODEL_NAME}...")
+        diffuser_model = DiffuserModel(model_name=config.DIFFUSER_MODEL_NAME)
+        print(f"[Diffuser] Model loaded successfully")
+    except Exception as e:
+        print(f"[Diffuser] Error loading diffuser model: {e}")
+        diffuser_model = None
     
     # VRAM monitoring disabled - no longer using sliding window approach
     # sliding_event is just initialized but not actively used

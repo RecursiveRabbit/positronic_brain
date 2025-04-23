@@ -9,6 +9,7 @@ import torch  # For device check
 
 # --- Model Configuration ---
 MODEL_NAME = "moonshotai/Kimi-VL-A3B-Thinking"
+DIFFUSER_MODEL_NAME = "distilbert-base-uncased"  # Model used for token repair in the Compactor
 TRUST_REMOTE_CODE = True
 
 # --- Device Configuration ---
@@ -25,8 +26,10 @@ CONTEXT_WINDOW_TARGET = 500  # Target size of KV cache after pruning
 TEMPORAL_PENALTY_FACTOR = 0.005  # Factor for age-based pruning penalty
 
 # --- Brightness Engine Configuration ---
-BRIGHTNESS_ALPHA = 10.0  # Attention gain factor for brightness calculation
-BRIGHTNESS_BETA = 0.01   # Decay factor for brightness calculation
+BRIGHTNESS_ALPHA = 0.7      # Weight for new attention-based brightness
+BRIGHTNESS_BETA = 0.3       # Weight for existing brightness (decay factor)
+BRIGHTNESS_REPAIR_THRESHOLD = 50.0  # Only repair tokens with brightness below this threshold
+MAX_REPAIR_TOKENS_PER_STEP = 5      # Maximum number of tokens to repair in a single step
 
 # --- Sampling Configuration ---
 @dataclass
