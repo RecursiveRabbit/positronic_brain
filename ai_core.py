@@ -232,7 +232,30 @@ async def _handle_context_update(
 
             if diffs_to_apply:
                 print(f"[Patcher Hook] Applying {len(diffs_to_apply)} patches before context update forward pass...")
-                past_key_values = kv_patcher.patch(past_key_values, diffs_to_apply)
+                
+                # 1. Apply diffs to the KVMirror state FIRST
+                #    This updates the canonical map of which token *should* be at each position.
+                try:
+                    update_summary = kv_mirror_manager.apply_diff(diffs_to_apply)
+                    print(f"[KVMirror ApplyDiff] Summary: {update_summary}")
+                    # Handle potential failures reported in update_summary if necessary
+                except Exception as mirror_e:
+                    print(f"[Error] Failed applying diff to KVMirror: {mirror_e}")
+                    # Decide how to proceed - skip patching cache? Log error?
+                    # For now, log and potentially skip cache patch for this cycle.
+                    diffs_to_apply = [] # Clear diffs if mirror update failed
+
+                # 2. Apply diffs to the KV Cache Tensors (if mirror update succeeded)
+                if diffs_to_apply and past_key_values is not None:
+                    try:
+                        # This call uses the KVCachePatcher with its *placeholder* logic for now
+                        past_key_values = kv_patcher.patch(past_key_values, diffs_to_apply)
+                        print(f"[KVPatcher] KV cache patching attempted.")
+                    except Exception as patch_e:
+                        print(f"[Error] KVCachePatcher failed: {patch_e}")
+                        # If patching fails, we might have inconsistent state.
+                        # Safest might be to use the unpatched cache? Or log severity?
+                        # For now, log the error. past_key_values remains unpatched by patcher.
         # --------------------------
         
         # Perform an incremental forward pass with the existing KV cache using external function
@@ -473,6 +496,46 @@ async def _generate_next_token(
                 print(f"[ASSERT FAIL] Attention mask length mismatch! Mask: {current_attention_mask_for_call.shape[1]}, Expected: {expected_attn_len} (Input: {current_input_len}, Cache: {cache_len})", file=sys.stderr)
                 # Don't raise error yet, just log the warning so we can analyze without crashing
                 # raise AssertionError(f"Attention mask length mismatch!")
+        
+        # --- Apply Pending Patches (if any) ---
+        if kv_patcher is not None and pending_diffs_queue is not None and past_key_values is not None:
+            diffs_to_apply = []
+            while not pending_diffs_queue.empty():
+                try:
+                    # Get all currently available diffs without blocking indefinitely
+                    diff_item = pending_diffs_queue.get_nowait()
+                    diffs_to_apply.append(diff_item)
+                    pending_diffs_queue.task_done()  # Mark task done for queue management
+                except asyncio.QueueEmpty:
+                    break  # No more items currently available
+
+            if diffs_to_apply:
+                print(f"[Patcher Hook] Applying {len(diffs_to_apply)} patches before token generation forward pass...")
+                
+                # 1. Apply diffs to the KVMirror state FIRST
+                #    This updates the canonical map of which token *should* be at each position.
+                try:
+                    update_summary = kv_mirror_manager.apply_diff(diffs_to_apply)
+                    print(f"[KVMirror ApplyDiff] Summary: {update_summary}")
+                    # Handle potential failures reported in update_summary if necessary
+                except Exception as mirror_e:
+                    print(f"[Error] Failed applying diff to KVMirror: {mirror_e}")
+                    # Decide how to proceed - skip patching cache? Log error?
+                    # For now, log and potentially skip cache patch for this cycle.
+                    diffs_to_apply = [] # Clear diffs if mirror update failed
+
+                # 2. Apply diffs to the KV Cache Tensors (if mirror update succeeded)
+                if diffs_to_apply and past_key_values is not None:
+                    try:
+                        # This call uses the KVCachePatcher with its *placeholder* logic for now
+                        past_key_values = kv_patcher.patch(past_key_values, diffs_to_apply)
+                        print(f"[KVPatcher] KV cache patching attempted.")
+                    except Exception as patch_e:
+                        print(f"[Error] KVCachePatcher failed: {patch_e}")
+                        # If patching fails, we might have inconsistent state.
+                        # Safest might be to use the unpatched cache? Or log severity?
+                        # For now, log the error. past_key_values remains unpatched by patcher.
+        # --------------------------
         
         # --- Step 1: Standard Model Forward Pass using external function ---
         try:

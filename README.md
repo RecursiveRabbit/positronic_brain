@@ -1,6 +1,6 @@
 # Positronic Brain
 
-A sophisticated language model inference engine featuring continuous generation, context management, and advanced token handling.
+A sophisticated language model inference engine featuring continuous generation, context management, advanced token handling, and autonomous token repair.
 
 ## Overview
 
@@ -9,18 +9,37 @@ The Positronic Brain is an advanced AI system that implements an efficient infer
 - Continuous token generation with advanced sampling techniques
 - Dynamic context management with attention-based pruning
 - Token-level control with a KV Mirror system
+- Brightness-based token tracking and repair
+- Asynchronous background token optimization via the Compactor
 - Optimized memory handling for long-running inference
 
 ## Key Components
 
 - `ai_core.py`: The main inference loop and core functionality
+- `main.py`: FastAPI server and application lifecycle management
 - `positronic_brain/`: Package containing modular components:
+  - `brightness_engine.py`: Token importance tracking and scoring
+  - `compactor.py`: Asynchronous token optimization system
   - `config.py`: Configuration settings
   - `controller.py`: Context injection and management
+  - `diffuser_runner.py`: MLM-based token repair system
   - `kv_mirror.py`: Bidirectional token mapping and tracking
+  - `kv_patcher.py`: KV cache manipulation for token replacement
+  - `metrics.py`: Prometheus metrics and monitoring
   - `model_io.py`: Model loading and inference operations
   - `pruning.py`: Context pruning algorithms
   - `sampler.py`: Token sampling strategies
+
+## System Architecture
+
+The Positronic Brain implements a multi-component architecture:
+
+1. **Main Inference Loop**: Handles token generation and context management
+2. **KV Mirror**: Tracks token positions, brightness, and state
+3. **Brightness Engine**: Monitors token importance based on attention patterns
+4. **Compactor**: Background process that identifies and repairs suboptimal tokens
+5. **Diffuser Runner**: Uses masked language modeling to compute better token replacements
+6. **KV Cache Patcher**: Applies token replacements directly to the KV cache tensors
 
 ## Getting Started
 
@@ -32,6 +51,11 @@ pip install -r requirements.txt
 2. Run the main application:
 ```
 python main.py
+```
+
+3. Connect to the web interface:
+```
+http://localhost:8000
 ```
 
 ## Credits
