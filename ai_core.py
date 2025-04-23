@@ -22,6 +22,7 @@ from positronic_brain.controller import SimpleContextController
 from positronic_brain.vram_monitor import vram_monitor_task
 from positronic_brain.utils import get_top_tokens, _async_save_context_text, update_top_tokens
 from positronic_brain.persistence import save_context, load_context
+from positronic_brain.kv_patcher import KVCachePatcher
 import asyncio
 import sys
 import gc
@@ -48,7 +49,12 @@ from positronic_brain.sampler import top_p_filter, top_k_filter, apply_repetitio
 model = None
 processor = None
 diffuser_model = None  # Diffuser model for token repair
+kv_patcher = None  # KV Cache Patcher for applying diffs to KV cache
 sampler_state = SamplerState()  # Global instance of sampler state
+
+# Global variables for components that need to be accessed by main.py
+kv_mirror_manager = None
+diffuser_model = None
 
 # Brightness thresholds for token repair
 BRIGHTNESS_REPAIR_THRESHOLD = 50.0  # Only repair tokens with brightness below this threshold
@@ -63,7 +69,7 @@ BUFFER_TOKENS = 256  # Buffer tokens to prevent thrashing near the limit
 
 # --- KV Cache Mirror Instance ---
 # Replaces the old global variables and functions
-kv_mirror_manager = KVMirror()
+kv_mirror_manager = None
 
 # KV Mirror structure has fully replaced the legacy token map
 # No backward compatibility is maintained
@@ -170,7 +176,9 @@ async def _handle_context_update(
     output_queue: asyncio.Queue,
     update_tokens: torch.Tensor,
     update_attention_mask: torch.Tensor,
-    update_token_ids: list
+    update_token_ids: list,
+    kv_patcher: KVCachePatcher = None,
+    pending_diffs_queue: asyncio.Queue = None
 ) -> tuple[torch.Tensor, torch.Tensor, Optional[tuple], bool]:
     """
     Handles the logic when a context update (injection) is processed.
@@ -210,6 +218,23 @@ async def _handle_context_update(
             # No cache yet, just use None
             injection_attention_mask = None
         
+        # --- Apply Pending Patches (if any) ---
+        if kv_patcher is not None and pending_diffs_queue is not None and past_key_values is not None:
+            diffs_to_apply = []
+            while not pending_diffs_queue.empty():
+                try:
+                    # Get all currently available diffs without blocking indefinitely
+                    diff_item = pending_diffs_queue.get_nowait()
+                    diffs_to_apply.append(diff_item)
+                    pending_diffs_queue.task_done()  # Mark task done for queue management
+                except asyncio.QueueEmpty:
+                    break  # No more items currently available
+
+            if diffs_to_apply:
+                print(f"[Patcher Hook] Applying {len(diffs_to_apply)} patches before context update forward pass...")
+                past_key_values = kv_patcher.patch(past_key_values, diffs_to_apply)
+        # --------------------------
+        
         # Perform an incremental forward pass with the existing KV cache using external function
         try:
             logits, llm_output_past_key_values, outputs_attentions = execute_forward_pass(
@@ -226,6 +251,7 @@ async def _handle_context_update(
             outputs.logits = logits
         except Exception as model_e:
             # Error handling for model execution is handled at a higher level
+            print(f"[Error] Forward pass failed during context update: {str(model_e)}")
             raise model_e
         
         # Register injected tokens in the KV Mirror structure
@@ -335,63 +361,10 @@ async def _handle_context_update(
                         if llm_output_past_key_values is not None:
                             past_key_values = llm_output_past_key_values  # Keep the original KV cache
                         print(f"[Attention Cache - Injection] Pruning failed, allowing context to grow to {input_ids.shape[1]} tokens. This is expected behavior.")
-                    
-                    # Use the same indices for input_ids/attention_mask that we used for the KV cache
-                    target_device_for_inputs = input_ids.device
-                    keep_indices_for_inputs = keep_indices.to(target_device_for_inputs)
-                    
-                    # Prune using the device-matched indices for synchronized pruning
-                    input_ids = input_ids[:, keep_indices_for_inputs]
-                    attention_mask = attention_mask[:, keep_indices_for_inputs]
-                    
-                    # Log the final pruned length
-                    final_pruned_len = input_ids.shape[1]
-                    print(f"[Context Injection] Final pruned length: {final_pruned_len} tokens")
-                    
-                    # Double check that we ended up with exactly config.CONTEXT_WINDOW_TARGET tokens 
-                    assert final_pruned_len == config.CONTEXT_WINDOW_TARGET, \
-                        f"FATAL: After pruning, ended with {final_pruned_len} tokens, expected {config.CONTEXT_WINDOW_TARGET}!"
-                    
-                    # Synchronize the token_map to reflect the pruned state
-                    try:
-                        print(f"[Token Map Sync] Starting sync with keep_indices shape: {keep_indices.shape}", file=sys.stderr)
-                        
-                        # We need keep_indices on the same device as input_ids_before_pruning for tensor indexing
-                        target_device = input_ids_before_pruning.device
-                        keep_indices_on_target = keep_indices.to(target_device)
-                        
-                        # Select the token IDs directly from the pre-pruning tensor
-                        # The result will have the correct pruned length (current_cache_len - len(valid_indices_to_remove))
-                        kept_token_ids_tensor = torch.index_select(input_ids_before_pruning[0], 0, keep_indices_on_target)
-                        
-                        # Convert the resulting tensor to a Python list of integers
-                        reconstructed_map = [int(tid) for tid in kept_token_ids_tensor.cpu().tolist()]
-                        
-                        final_map_len = len(reconstructed_map)
-                        print(f"[Token Map Sync] Reconstruction complete. Map length: {final_map_len}, keep_indices: {keep_indices.shape[0]}", file=sys.stderr)
-
-                        # No need for loop-based reconstruction anymore as we use direct tensor indexing
-                        # KV Mirror pruning has already handled the state synchronization
-                        
-                        # Verify reconstructed map matches keep_indices length
-                        assert len(reconstructed_map) == keep_indices.shape[0], \
-                            f"Reconstructed map length {len(reconstructed_map)} does not match keep_indices length {keep_indices.shape[0]}"
-                            
-                    except Exception as e:
-                        # Catch other potential errors during reconstruction
-                        import traceback
-                        print(f"[KV Mirror Sync Error] Failed during pruning operation: {type(e).__name__}: {e}", file=sys.stderr)
-                        print(f"[Traceback] {''.join(traceback.format_tb(e.__traceback__))}", file=sys.stderr)
-                    
-                    print(f"[Attention Cache - Injection] Context length after synchronized pruning: {input_ids.shape[1]}")
-                except Exception as e:
-                    print(f"[Attention Cache - Injection] Error in attention-based pruning: {type(e).__name__}: {str(e)}")
-                    # Fallback to simple truncation if attention-based pruning fails
-                    # Never truncate or use FIFO-based pruning! Let context grow on failure.
-                    # Core design philosophy is to never do simple truncation.
-                    if llm_output_past_key_values is not None:
-                        past_key_values = llm_output_past_key_values  # Keep the original KV cache
-                    print(f"[Attention Cache - Injection] Pruning failed, allowing context to grow to {input_ids.shape[1]} tokens. This is expected behavior.")
+                except Exception as outer_e:
+                    print(f"[Context Injection] Outer pruning error: {type(outer_e).__name__}: {str(outer_e)}")
+                    # If the outer try block fails, still use the original KV cache
+                    past_key_values = llm_output_past_key_values
             
             else:
                 # Cache hasn't reached config.CONTEXT_WINDOW_TARGET yet, just use it as is
@@ -436,7 +409,9 @@ async def _generate_next_token(
     output_queue: asyncio.Queue,
     resume_generation_event: asyncio.Event,
     stop_tokens: set[int],
-    pause_tokens: set[int]
+    pause_tokens: set[int],
+    kv_patcher: KVCachePatcher = None,
+    pending_diffs_queue: asyncio.Queue = None
 ) -> tuple[torch.Tensor, torch.Tensor, Optional[tuple]]:
     """
     Handles the standard token generation path.
@@ -808,50 +783,85 @@ async def _generate_next_token(
         # Re-raise to let the main loop handle the error
         raise
 
-async def run_continuous_inference(model, processor, controller, initial_prompt_content=None, output_queue=None, shutdown_event=None, sliding_event=None, resume_context_file=None, shared_state=None):
-    """
-    Runs continuous inference, pushing output tokens to the queue for consumers
+async def run_continuous_inference(model, processor, controller, initial_prompt_content=None, output_queue=None, shutdown_event=None, sliding_event=None, resume_context_file=None, shared_state=None, kv_patcher=None):
+    """Runs continuous inference, pushing output tokens to the queue for consumers
     
     Args:
         model: The LLM
         processor: The processor for the model
         controller: The SimpleContextController for injections
-        initial_prompt_content: The initial prompt text
-        output_queue: asyncio.Queue to push generated tokens to
-        shutdown_event: asyncio.Event that signals when to shut down the inference loop
-        sliding_event: asyncio.Event that signals when to activate sliding window (VRAM threshold exceeded)
+        initial_prompt_content: Optional initial prompt
+        output_queue: Queue where tokens are pushed
+        shutdown_event: Event to signal shutdown
+        sliding_event: Event to signal when sliding window should be applied
+        resume_context_file: Optional file to load context from
+        shared_state: Shared state dictionary
+        kv_patcher: KV Cache Patcher for applying diffs to KV cache
     """
-    global sampler_state, dynamic_ceiling
+    global kv_mirror_manager, dynamic_ceiling
     
     # Default values for backward compatibility
     if output_queue is None:
         output_queue = asyncio.Queue()
-    if shutdown_event is None:
-        shutdown_event = asyncio.Event()
-    
-    # Create a resume event for pausing/resuming generation
+    # Create default shared state if not provided
+    if shared_state is None:
+        shared_state = {}
+
+    # Create resume_generation_event for controlling generation resumption
     resume_generation_event = asyncio.Event()
-    resume_generation_event.set()  # Initially set to true (not paused)
+    resume_generation_event.set()  # Start with generation enabled
+    
+    # Create queue for pending diffs from compactor
+    pending_diffs_queue = asyncio.Queue()
     
     # Store the event in shared state for external access
     if shared_state is not None:
         async with shared_state['lock']:
             shared_state['resume_generation_event'] = resume_generation_event
     
+    # Initialize KV Mirror for tracking token context
+    global kv_mirror_manager
+    print(f"[KVMirror] Initializing KV Mirror...")
+    kv_mirror_manager = KVMirror(max_positions=2048)
+    print(f"[KVMirror] Initialized successfully")
+    
+    # Initialize the diffuser model for token repair
+    global diffuser_model
+    try:
+        print(f"[Diffuser] Loading diffuser model {config.DIFFUSER_MODEL_NAME}...")
+        diffuser_model = DiffuserModel(model_name=config.DIFFUSER_MODEL_NAME)
+        print(f"[Diffuser] Model loaded successfully")
+    except Exception as e:
+        print(f"[Diffuser] Error loading diffuser model: {e}")
+        diffuser_model = None
+        
+    # Initialize the KV Cache Patcher
+    try:
+        print(f"[KVPatcher] Initializing KV Cache Patcher...")
+        kv_patcher = KVCachePatcher(model)
+        print(f"[KVPatcher] Initialized successfully")
+    except Exception as e:
+        print(f"[KVPatcher] Error initializing KV Cache Patcher: {e}")
+        kv_patcher = None
+    
+    # VRAM monitoring disabled - no longer using sliding window approach
+    # sliding_event is just initialized but not actively used
+    print("[VRAM] Monitoring disabled - using fixed window size")
+    
     # Lookup token IDs for stop and pause detection
     try:
         # Look for the primary end-of-turn token used by the model
         im_end_token_id = None
         try:
-            # Try to get the token ID for <|im_end|>
-            im_end_token_id = processor.tokenizer.convert_tokens_to_ids("<|im_end|>")
+            # Try to get the token ID for 
+            im_end_token_id = processor.tokenizer.convert_tokens_to_ids("")
             if im_end_token_id == processor.tokenizer.unk_token_id:
                 im_end_token_id = None
-                print("[Token Lookup] <|im_end|> token not found in vocabulary, falling back to eos_token")
+                print("[Token Lookup]  token not found in vocabulary, falling back to eos_token")
             else:
-                print(f"[Token Lookup] Found <|im_end|> token ID: {im_end_token_id}")
+                print(f"[Token Lookup] Found  token ID: {im_end_token_id}")
         except:
-            print("[Token Lookup] Error looking up <|im_end|> token, falling back to eos_token")
+            print("[Token Lookup] Error looking up  token, falling back to eos_token")
         
         # Get standard EOS token ID
         eos_token_id = processor.tokenizer.eos_token_id
@@ -907,9 +917,9 @@ async def run_continuous_inference(model, processor, controller, initial_prompt_
     print(f"[Startup] Received initial_prompt_content (first 100 chars): {initial_prompt_content[:100]}...")
     
     # Check if the received content looks like pre-formatted chat history
-    # Look for common chat template markers like <|im_system|> or <|im_start|>
+    # Look for common chat template markers like <|im_system|> or 
     if initial_prompt_content and ("<|im_system|>" in initial_prompt_content or 
-                                "<|im_start|>" in initial_prompt_content or
+                                "" in initial_prompt_content or
                                 "<|assistant|>" in initial_prompt_content):
         print("[Startup] Detected pre-formatted resume context. Tokenizing directly.")
         # Tokenize the loaded text directly, assuming it's already formatted
@@ -1005,7 +1015,9 @@ async def run_continuous_inference(model, processor, controller, initial_prompt_
                         output_queue=output_queue,
                         update_tokens=update_tokens,
                         update_attention_mask=update_attention_mask,
-                        update_token_ids=update_token_ids
+                        update_token_ids=update_token_ids,
+                        kv_patcher=kv_patcher,
+                        pending_diffs_queue=pending_diffs_queue
                     )
                     
                     # If update was unsuccessful (very rare), skip to next iteration
@@ -1041,7 +1053,9 @@ async def run_continuous_inference(model, processor, controller, initial_prompt_
                         output_queue=output_queue,
                         resume_generation_event=resume_generation_event,
                         stop_tokens=stop_tokens,
-                        pause_tokens=pause_tokens
+                        pause_tokens=pause_tokens,
+                        kv_patcher=kv_patcher,
+                        pending_diffs_queue=pending_diffs_queue
                     )
 
                 # All the token generation logic including forward pass, sampling, and state updates
@@ -1124,7 +1138,7 @@ async def setup_ai_core(initial_prompt="The simulation awakens. A stream of cons
                       vram_threshold_percent=80.0, 
                       vram_check_interval=5):
     """Initialize and return core AI components, including sliding event."""
-    global model, processor, diffuser_model, sliding_event  # Ensure shared variables are accessible
+    global model, processor, diffuser_model, kv_patcher, sliding_event, kv_mirror_manager  # Ensure shared variables are accessible
     
     # Load model and processor if not already loaded
     model, processor = load_model(config.config.MODEL_NAME, config.config.TRUST_REMOTE_CODE)
@@ -1169,7 +1183,17 @@ async def setup_ai_core(initial_prompt="The simulation awakens. A stream of cons
         }
     }
     
+    # Create the pending diffs queue for Compactor to communicate with main loop
+    pending_diffs_queue = asyncio.Queue(maxsize=config.COMPACTOR_BUFFER_SIZE)
+    
+    # Initialize KV Mirror for tracking token context
+    global kv_mirror_manager
+    print(f"[KVMirror] Initializing KV Mirror...")
+    kv_mirror_manager = KVMirror(max_positions=2048)
+    print(f"[KVMirror] Initialized successfully")
+    
     # Initialize the diffuser model for token repair
+    global diffuser_model
     try:
         print(f"[Diffuser] Loading diffuser model {config.DIFFUSER_MODEL_NAME}...")
         diffuser_model = DiffuserModel(model_name=config.DIFFUSER_MODEL_NAME)
@@ -1177,6 +1201,15 @@ async def setup_ai_core(initial_prompt="The simulation awakens. A stream of cons
     except Exception as e:
         print(f"[Diffuser] Error loading diffuser model: {e}")
         diffuser_model = None
+        
+    # Initialize the KV Cache Patcher
+    try:
+        print(f"[KVPatcher] Initializing KV Cache Patcher...")
+        kv_patcher = KVCachePatcher(model)
+        print(f"[KVPatcher] Initialized successfully")
+    except Exception as e:
+        print(f"[KVPatcher] Error initializing KV Cache Patcher: {e}")
+        kv_patcher = None
     
     # VRAM monitoring disabled - no longer using sliding window approach
     # sliding_event is just initialized but not actively used
@@ -1186,11 +1219,13 @@ async def setup_ai_core(initial_prompt="The simulation awakens. A stream of cons
         "model": model,
         "processor": processor,
         "controller": controller,
+        "kv_patcher": kv_patcher,      # Add KV Cache Patcher to returned components
         "output_queue": output_queue,
         "shutdown_event": shutdown_event,
         "sliding_event": sliding_event,  # Return the event
         "initial_prompt": initial_prompt,
         "initial_prompt_content": effective_initial_prompt,  # Use the loaded resume text or fallback prompt
         "resume_context_file": resume_context_file,  # Pass resume file path to the inference loop
-        "shared_state": shared_state    # Add shared state for UI integration
+        "shared_state": shared_state,   # Add shared state for UI integration
+        "pending_diffs_queue": pending_diffs_queue  # Queue for Compactor to send diffs to main loop
     }

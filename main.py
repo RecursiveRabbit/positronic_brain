@@ -17,12 +17,13 @@ from typing import List, Dict, Any, Optional
 import ai_core
 from api_models import SamplerUpdate, TokenBiasUpdate, TokenBiasPhrase, TokenInfo, TopTokensResponse
 from positronic_brain.metrics import init_metrics_server
+from positronic_brain.compactor import compactor_task
 
 # Define lifespan context manager
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Code to run on startup
-    global ai_components, inference_task, broadcast_task
+    global ai_components, inference_task, broadcast_task, compactor_task
     print("Application startup...")
     
     # Initialize the Prometheus metrics server
@@ -34,6 +35,30 @@ async def lifespan(app: FastAPI):
     # Start token broadcaster task
     broadcast_task = asyncio.create_task(broadcast_tokens())
     broadcast_task.add_done_callback(_log_task_result)
+    
+    # Start the Compactor task if enabled
+    compactor_task = None
+    if hasattr(ai_core.config, 'COMPACTOR_ENABLED') and ai_core.config.COMPACTOR_ENABLED:
+        # Get the required components
+        kv_mirror_manager = ai_core.kv_mirror_manager
+        diffuser_model = ai_core.diffuser_model
+        pending_diffs_queue = ai_components.get('pending_diffs_queue')
+        shutdown_event = ai_components.get('shutdown_event')
+        
+        if kv_mirror_manager and diffuser_model and pending_diffs_queue and shutdown_event:
+            print("Starting Compactor task...")
+            compactor_task = asyncio.create_task(
+                compactor_task(
+                    kv_mirror_manager=kv_mirror_manager,
+                    diffuser_model=diffuser_model,
+                    pending_diffs_queue=pending_diffs_queue,
+                    shutdown_event=shutdown_event
+                )
+            )
+            compactor_task.add_done_callback(_log_task_result)
+            print("Compactor task started")
+        else:
+            print("Cannot start Compactor: missing required components")
     
     # Start inference task with explicit keyword arguments
     try:
@@ -70,8 +95,8 @@ async def lifespan(app: FastAPI):
         # Signal the inference task to stop
         ai_components["shutdown_event"].set()
     
-    # Cancel and await both tasks with proper error handling
-    for task_name, task in [("Inference", inference_task), ("Broadcast", broadcast_task)]:
+    # Cancel and await all tasks with proper error handling
+    for task_name, task in [("Inference", inference_task), ("Broadcast", broadcast_task), ("Compactor", compactor_task)]:
         if task and not task.done():
             try:
                 # Cancel the task
@@ -107,6 +132,8 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 # Global variables to track state
 ai_components = None
 inference_task = None
+broadcast_task = None
+compactor_task = None
 active_connections = set()
 
 # Create a connection manager
