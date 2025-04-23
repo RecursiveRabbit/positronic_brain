@@ -3,9 +3,9 @@ import os
 import sys
 from typing import List, Dict, Any
 
-# Note: get_top_tokens currently depends on global variables
-# 'top_predicted_tokens' and 'top_tokens_lock' defined in ai_core.py
-# TODO: Refactor state management for top tokens later.
+# State for Top Predicted Tokens (Moved from ai_core.py)
+_top_predicted_tokens: List[Dict[str, Any]] = []
+_top_tokens_lock = asyncio.Lock()
 
 async def get_top_tokens(count=10):
     """Get the top predicted tokens with their probabilities.
@@ -13,12 +13,17 @@ async def get_top_tokens(count=10):
     Returns:
         List of dicts, each with 'token', 'token_id', and 'probability' keys
     """
-    # Direct import - use with caution to avoid circular imports
-    import ai_core
-    
-    async with ai_core.top_tokens_lock:
+    # Access module-level state directly
+    async with _top_tokens_lock:
         # Return a copy to avoid modification during iteration
-        return ai_core.top_predicted_tokens[:count] if ai_core.top_predicted_tokens else []
+        return _top_predicted_tokens[:count] if _top_predicted_tokens else []
+
+
+async def update_top_tokens(new_token_list: List[Dict[str, Any]]):
+    """Atomically update the top predicted tokens list."""
+    global _top_predicted_tokens  # Needed to modify module-level list
+    async with _top_tokens_lock:
+        _top_predicted_tokens = new_token_list
 
 
 async def _async_save_context_text(text_to_save, file_path):

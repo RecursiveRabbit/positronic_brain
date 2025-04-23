@@ -15,3 +15,5 @@ pynvml>=11.0.0  # For GPU VRAM monitoring
 jinja2>=3.0.0  # Required for FastAPI templating
 # Keep aioconsole for now as a fallback option
 aioconsole
+pytest>=7.0.0  # For unit testing
+prometheus_client>=0.16.0  # For metrics collection

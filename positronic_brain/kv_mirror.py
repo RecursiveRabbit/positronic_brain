@@ -161,17 +161,18 @@ class KVMirror:
         """Get an atomic snapshot of the current KV mirror state.
         
         Returns:
-            Dict containing kv_mirror mapping and token information
+            Dict containing kv_mirror mapping and token information, including
+            all tokens in the registry (both positioned and non-positioned).
         """
         with self._lock:
             # Create copies to avoid exposing internal state
             mirror_snapshot = self._pos.copy()
             registry_snapshot = {}
             
-            for instance_id in mirror_snapshot.values():
-                if instance_id in self._registry:
-                    # Create a copy of the token to avoid external modification
-                    registry_snapshot[instance_id] = copy.copy(self._registry[instance_id])
+            # Include all tokens from the registry, not just those in the mirror
+            for instance_id, token in self._registry.items():
+                # Create a copy of the token to avoid external modification
+                registry_snapshot[instance_id] = copy.copy(token)
         
         return {
             'kv_mirror': mirror_snapshot,
@@ -194,7 +195,10 @@ class KVMirror:
         """Clear all state in the KV Mirror.
         
         This resets the internal data structures and counters to their initial empty state.
-        Useful when reinitializing the mirror for a new inference session.
+        Useful when reinitializing the mirror for a new inference session or for testing.
+        
+        The method also resets the global generation step counter, ensuring that
+        instance IDs start from 1 after clear() has been called.
         """
         with self._lock:
             # Store metrics before clearing
@@ -208,7 +212,9 @@ class KVMirror:
             set_gauge("kv_mirror_active_tokens", 0)
             set_gauge("kv_mirror_registry_tokens", 0)
             inc_counter("kv_mirror_tokens_cleared_total", tokens_cleared)
-            
+        
+        # Reset the generation step counter to ensure instance IDs start fresh
+        # This is particularly useful for testing and initialization
         with self._generation_step_lock:
             self._global_generation_step = 0
             

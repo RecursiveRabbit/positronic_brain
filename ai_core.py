@@ -14,7 +14,7 @@ from positronic_brain.sampler import select_next_token
 from positronic_brain.model_io import load_model, move_cache_to_device, truncate_kv_cache, execute_forward_pass
 from positronic_brain.controller import SimpleContextController
 from positronic_brain.vram_monitor import vram_monitor_task
-from positronic_brain.utils import get_top_tokens, _async_save_context_text
+from positronic_brain.utils import get_top_tokens, _async_save_context_text, update_top_tokens
 from positronic_brain.persistence import save_context, load_context
 import asyncio
 import sys
@@ -49,12 +49,6 @@ sliding_event = asyncio.Event()
 # Fixed sliding window ceiling - hardcoded to a conservative value
 dynamic_ceiling = 3000  # Hardcoded to 3000 tokens as requested
 BUFFER_TOKENS = 256  # Buffer tokens to prevent thrashing near the limit
-
-# Track top predicted tokens (for UI display)
-top_predicted_tokens = []
-
-# Lock for accessing top_predicted_tokens
-top_tokens_lock = asyncio.Lock()
 
 # --- KV Cache Mirror Instance ---
 # Replaces the old global variables and functions
@@ -279,7 +273,7 @@ async def _handle_context_update(
                     processed_past_key_values = []
                     try:
                         # --- KV Mirror Update for Pruning ---
-                        # First, capture input_ids_before_pruning for token_map reconstruction
+                        # CRITICAL: Capture input_ids before pruning for KV Mirror state synchronization
                         input_ids_before_pruning = input_ids[0].clone().cpu()
                         
                         # Apply pruning to the KV mirror atomically using the new function
@@ -366,32 +360,16 @@ async def _handle_context_update(
                         print(f"[Token Map Sync] Reconstruction complete. Map length: {final_map_len}, keep_indices: {keep_indices.shape[0]}", file=sys.stderr)
 
                         # No need for loop-based reconstruction anymore as we use direct tensor indexing
-                        # Verify final map length matches keep_indices length
+                        # KV Mirror pruning has already handled the state synchronization
+                        
+                        # Verify reconstructed map matches keep_indices length
                         assert len(reconstructed_map) == keep_indices.shape[0], \
                             f"Reconstructed map length {len(reconstructed_map)} does not match keep_indices length {keep_indices.shape[0]}"
-
-                        # For pure attention pruning, reconstructed_map may not match config.CONTEXT_WINDOW_TARGET
-                        # We dynamically resize the token_map to match the current context length
-                        
-                        # Update and RESIZE the global token_map
-                        async with token_map_lock:
-                            token_map.clear()  # Remove all old elements
-                            token_map.extend(reconstructed_map)  # Add the new elements
                             
-                            # Verify length after update
-                            new_map_len = len(token_map)
-                            print(f"[Token Map Sync] Global token_map resized to length: {new_map_len}", file=sys.stderr)
-
-                        if shared_state is not None:
-                            async with shared_state['lock']:
-                                if 'token_map' in shared_state:
-                                    # Replace list content in shared state too
-                                    shared_state['token_map'].clear()
-                                    shared_state['token_map'].extend(reconstructed_map)  # Update shared state copy
                     except Exception as e:
                         # Catch other potential errors during reconstruction
                         import traceback
-                        print(f"[Token Map Sync Error - Injection] Failed to synchronize token_map: {type(e).__name__}: {e}", file=sys.stderr)
+                        print(f"[KV Mirror Sync Error] Failed during pruning operation: {type(e).__name__}: {e}", file=sys.stderr)
                         print(f"[Traceback] {''.join(traceback.format_tb(e.__traceback__))}", file=sys.stderr)
                     
                     print(f"[Attention Cache - Injection] Context length after synchronized pruning: {input_ids.shape[1]}")
@@ -542,9 +520,7 @@ async def _generate_next_token(
             sampler_state=sampler_state
         )
         
-        # Update the global top_predicted_tokens list for the UI
-        # This needs the processor to decode, so we handle it here
-        # where the processor is available.
+        # Process tokens for UI display (decode token IDs to readable text)
         processed_top_tokens = []
         if processor:
             for token_info in top_token_data_for_ui:
@@ -561,10 +537,8 @@ async def _generate_next_token(
                 except Exception as decode_err:
                     print(f"[Sampler UI] Error decoding token ID {token_id}: {decode_err}")
         
-        # Update the global token list (used for UI)
-        async with top_tokens_lock:
-            global top_predicted_tokens
-            top_predicted_tokens = processed_top_tokens # Update the global list
+        # Update the tokens list using the dedicated utility function
+        await update_top_tokens(processed_top_tokens)
         
         # The selected token ID is now directly available
         generated_token_id = selected_token_id
@@ -624,21 +598,16 @@ async def _generate_next_token(
                 removal_bias=0.0  # Default bias, could be customized based on token importance
             )
             
-            # Add to token map at correct position for context tracking
-            async with token_map_lock:
-                global token_map
-                token_map.append(generated_token_id)
-                
-                # Update shared state if present
-                if shared_state is not None:
-                    async with shared_state['lock']:
-                        if 'token_map' in shared_state:
-                            # Safety check before modification
-                            if isinstance(shared_state['token_map'], list):
-                                shared_state['token_map'].append(generated_token_id)
-                                # After each token, track progress info if shared state exists
-                                shared_state['input_len'] = input_ids.shape[1]
-                                shared_state['last_token'] = generated_token_id
+            # KV Mirror now tracks tokens internally - no need for global token_map
+            
+            # Record the generated token in the KV Mirror
+            kv_mirror_manager.register_token(generated_token_id)
+            
+            # Update shared state if present
+            if shared_state is not None:
+                async with shared_state['lock']:
+                    shared_state['input_len'] = input_ids.shape[1]
+                    shared_state['last_token'] = generated_token_id
             
             # Add to the context buffer (for prompt reconstruction later if needed)
             context_buffer.append(next_token_text)
@@ -678,7 +647,7 @@ async def _generate_next_token(
                         keep_indices = torch.arange(current_cache_len, device=target_device)
                     
                     # --- KV Mirror Update for Pruning ---
-                    # First, capture input_ids_before_pruning for token_map reconstruction
+                    # First, capture input_ids_before_pruning for KV Mirror state
                     input_ids_before_pruning = input_ids[0].clone().cpu()
                     
                     # Apply pruning to the KV mirror atomically
@@ -732,37 +701,12 @@ async def _generate_next_token(
                     input_ids = input_ids[:, keep_indices_for_inputs]
                     attention_mask = attention_mask[:, keep_indices_for_inputs]
                     
-                    # Synchronize the token_map to reflect the pruned state
-                    try:
-                        # Select the token IDs directly from the pre-pruning tensor
-                        target_device = input_ids_before_pruning.device
-                        keep_indices_on_target = keep_indices.to(target_device)
-                        kept_token_ids_tensor = torch.index_select(input_ids_before_pruning, 0, keep_indices_on_target)
-                        
-                        # Convert the resulting tensor to a Python list of integers
-                        reconstructed_map = [int(tid) for tid in kept_token_ids_tensor.cpu().tolist()]
-                        
-                        # Update and RESIZE the global token_map
-                        async with token_map_lock:
-                            global token_map
-                            token_map.clear()  # Remove all old elements
-                            token_map.extend(reconstructed_map)  # Add the new elements
-                            
-                            # Verify length after update
-                            new_map_len = len(token_map)
-                            print(f"[Token Map Sync] Global token_map resized to length: {new_map_len}", file=sys.stderr)
+                    # KV Mirror pruning has already synchronized the state
+                    print(f"[KV Mirror] Pruning state synchronized during generation", file=sys.stderr)
 
-                        if shared_state is not None:
-                            async with shared_state['lock']:
-                                if 'token_map' in shared_state:
-                                    # Replace list content in shared state too
-                                    shared_state['token_map'].clear()
-                                    shared_state['token_map'].extend(reconstructed_map)  # Update shared state copy
-                    except Exception as e:
-                        # Catch other potential errors during reconstruction
-                        import traceback
-                        print(f"[Token Map Sync Error] Failed to synchronize token_map: {type(e).__name__}: {e}", file=sys.stderr)
-                        print(f"[Traceback] {''.join(traceback.format_tb(e.__traceback__))}", file=sys.stderr)
+                    if shared_state is not None:
+                        # KV Mirror state already synchronized
+                        pass
                 except Exception as e:
                     print(f"[Attention Cache] Error in attention-based pruning: {type(e).__name__}: {str(e)}")
                     # Never truncate or use FIFO-based pruning! Let context grow on failure.
@@ -793,7 +737,7 @@ async def run_continuous_inference(model, processor, controller, initial_prompt_
         shutdown_event: asyncio.Event that signals when to shut down the inference loop
         sliding_event: asyncio.Event that signals when to activate sliding window (VRAM threshold exceeded)
     """
-    global sampler_state, top_predicted_tokens, dynamic_ceiling
+    global sampler_state, dynamic_ceiling
     
     # Default values for backward compatibility
     if output_queue is None:
@@ -1096,7 +1040,7 @@ async def setup_ai_core(initial_prompt="The simulation awakens. A stream of cons
                       vram_threshold_percent=80.0, 
                       vram_check_interval=5):
     """Initialize and return core AI components, including sliding event."""
-    global model, processor, sliding_event, token_map  # Ensure shared variables are accessible
+    global model, processor, sliding_event  # Ensure shared variables are accessible
     
     # Load model and processor if not already loaded
     model, processor = load_model(config.config.MODEL_NAME, config.config.TRUST_REMOTE_CODE)
@@ -1129,7 +1073,7 @@ async def setup_ai_core(initial_prompt="The simulation awakens. A stream of cons
     # Reset sliding event (in case of restart)
     sliding_event.clear()
     
-    # Create shared state for UI integration (KV Mirror only, no legacy token_map)
+    # Create shared state for UI integration using KV Mirror
     shared_state = {
         'last_token': '',                          # Track the most recent generated token
         'lock': asyncio.Lock(),                    # Lock for thread-safe access

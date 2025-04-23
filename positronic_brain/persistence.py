@@ -1,16 +1,12 @@
 import os
-import json
 import torch
-import threading
-from typing import Dict, Optional, List, Tuple, Any
+from typing import Dict, Optional, Tuple, Any
 from transformers import PreTrainedTokenizer
 
-# Note: Depends on global 'token_map' from ai_core.py (Legacy)
-# TODO: Refactor persistence away from token_map later.
 # Note: Using 'context_window_target' consistently to avoid confusion with 'max_context_window'.
 
-def save_context(input_ids, processor, file_path="context_history.txt", token_map_path=None):
-    """Save the current context to a file and optionally save the token map to a separate file"""
+def save_context(input_ids, processor, file_path="context_history.txt"):
+    """Save the current context to a text file"""
     try:
         # Decode current context
         context_text = processor.tokenizer.decode(input_ids[0], skip_special_tokens=False)
@@ -18,48 +14,17 @@ def save_context(input_ids, processor, file_path="context_history.txt", token_ma
         with open(file_path, "w", encoding="utf-8") as f:
             f.write(context_text)
         print(f"[Persistence] Saved context ({input_ids.shape[1]} tokens) to {file_path}")
-        
-        # Save token map if path is provided
-        if token_map_path:
-            # Create a thread-safe copy of the global token map using a lock
-            # We need to handle this carefully to work in both async and non-async contexts
-            token_map_copy = None
-            
-            # For thread safety, we'll use a regular threading lock instead of asyncio.Lock
-            # This avoids using 'async with' or 'await' at the module level
-            token_map_copy_lock = threading.Lock()
-            
-            # Direct import - use with caution to avoid circular imports
-            import ai_core
-            
-            with token_map_copy_lock:
-                # Make a direct copy of the token map
-                token_map_copy = ai_core.token_map[:]
-                
-            print("[Persistence] Copied token map for saving")
-            
-            # Convert None values to null for JSON serialization
-            serializable_map = [None if x is None else int(x) for x in token_map_copy]
-            
-            # Save the token map to a JSON file
-            with open(token_map_path, "w", encoding="utf-8") as f:
-                json.dump(serializable_map, f)
-            print(f"[Persistence] Saved token map to {token_map_path}")
-        
         return True
     except Exception as e:
         print(f"[Persistence] Error saving context: {e}")
         return False
 
 
-def load_context(processor, context_window_target, file_path="context_history.txt", token_map_path=None, device="cuda"):
-    """Load context from a file and return tokenized tensors and token map"""
-    # Direct import - use with caution to avoid circular imports
-    import ai_core
-    
+def load_context(processor, context_window_target, file_path="context_history.txt", device="cuda"):
+    """Load context from a file and return tokenized tensors"""
     if not os.path.exists(file_path):
         print(f"[Persistence] Context file {file_path} not found.")
-        return None, None, None
+        return None, None
         
     try:
         # Load text content
@@ -88,44 +53,8 @@ def load_context(processor, context_window_target, file_path="context_history.tx
             input_ids = input_ids[:, -context_window_target:]
             attention_mask = attention_mask[:, -context_window_target:]
         
-        # Load token map if available
-        loaded_token_map = None
-        if token_map_path and os.path.exists(token_map_path):
-            try:
-                with open(token_map_path, "r", encoding="utf-8") as f:
-                    loaded_token_map = json.load(f)
-                print(f"[Persistence] Loaded token map from {token_map_path}")
-                
-                # Check if loaded map matches the max context window size
-                if len(loaded_token_map) != context_window_target:
-                    print(f"[Persistence Warning] Loaded token map length ({len(loaded_token_map)}) doesn't match context_window_target ({context_window_target}). Using reconstructed map.")
-                    loaded_token_map = None
-                    
-            except Exception as e:
-                print(f"[Persistence] Error loading token map: {e}")
-                loaded_token_map = None
-        
-        # If we couldn't load the token map, reconstruct it from input_ids (best effort)
-        if loaded_token_map is None:
-            print("[Persistence] Reconstructing token map from input_ids")
-            loaded_token_map = [None] * context_window_target  # Use context_window_target consistently
-            for i in range(min(input_ids.shape[1], context_window_target)):
-                loaded_token_map[i] = int(input_ids[0, i].item())
-        
-        # Update the global token map with a regular threading lock instead of asyncio lock
-        # This avoids async with syntax which can't be used at module level
-        temp_lock = threading.Lock()
-        
-        try:
-            print("[Persistence] Updating global token_map with loaded data...")
-            with temp_lock:
-                ai_core.token_map[:] = loaded_token_map[:]
-            print("[Persistence] Successfully updated global token_map.")
-        except Exception as e:
-            print(f"[Persistence] Error updating global token_map: {e}")
-            
-        return input_ids, attention_mask, loaded_token_map
+        return input_ids, attention_mask
         
     except Exception as e:
         print(f"[Persistence] Error loading context: {e}")
-        return None, None, None
+        return None, None

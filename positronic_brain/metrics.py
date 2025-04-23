@@ -1,5 +1,11 @@
 import time
 import functools
+import inspect
+
+# Add iscoroutinefunction to functools if it's not there (older Python versions or testing environments)
+if not hasattr(functools, 'iscoroutinefunction'):
+    functools.iscoroutinefunction = inspect.iscoroutinefunction
+
 from prometheus_client import Histogram, Gauge, Counter, start_http_server, REGISTRY
 from prometheus_client.exposition import generate_latest
 
@@ -49,18 +55,26 @@ def timed_histogram(name: str, description: str = ''):
 # --- Functions to interact with Gauges and Counters ---
 def set_gauge(name: str, value: float, description: str = ''):
     """Set the value of a Prometheus Gauge."""
-    gauge = _gauges.setdefault(
-        name,
-        Gauge(name, description or f'Value of {name}')
-    )
+    # Get or create the gauge (using our cached dictionary)
+    gauge = _gauges.get(name)
+    if gauge is None:
+        gauge = _gauges.setdefault(
+            name,
+            Gauge(name, description or f'Value of {name}')
+        )
+    # Set the value
     gauge.set(value)
 
 def inc_counter(name: str, value: float = 1.0, description: str = ''):
     """Increment a Prometheus Counter."""
-    counter = _counters.setdefault(
-        name,
-        Counter(name, description or f'Count of {name}')
-    )
+    # Get or create the counter (using our cached dictionary)
+    counter = _counters.get(name)
+    if counter is None:
+        counter = _counters.setdefault(
+            name,
+            Counter(name, description or f'Count of {name}')
+        )
+    # Increment the counter
     counter.inc(value)
 
 # --- Metrics Server Initialization ---
