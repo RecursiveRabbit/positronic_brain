@@ -17,6 +17,7 @@ class ContextToken:
     state: Literal['active', 'pruned'] = 'active'
     timestamp: float = field(default_factory=time.time)
     removal_bias: float = 0.0  # Manual bias to influence pruning (positive = more likely to keep)
+    brightness: float = 255.0  # Token brightness value (255 = max, 0 = min) for Halo Weave
 
 
 class KVMirror:
@@ -41,7 +42,7 @@ class KVMirror:
             return self._global_generation_step
 
     @timed_histogram("kv_mirror_add_seconds")
-    def add(self, token_id: int, position: int, *, source: str = 'llm', removal_bias: float = 0.0) -> int:
+    def add(self, token_id: int, position: int, *, source: str = 'llm', removal_bias: float = 0.0, brightness: float = 255.0) -> int:
         """Atomically add a new token to the KV mirror and registry.
         
         This is the primary function for adding new tokens to the context tracking system.
@@ -53,6 +54,7 @@ class KVMirror:
             position: The position in the KV cache (0 to N-1)
             source: The source of the token (llm, user_inject, system_init, etc.)
             removal_bias: Bias factor affecting pruning (positive = more likely to keep)
+            brightness: Initial brightness value for the token (default: 255.0 = maximum brightness)
             
         Returns:
             instance_id: The unique ID assigned to this token instance
@@ -68,7 +70,8 @@ class KVMirror:
             source=source,
             state='active',
             timestamp=time.time(),
-            removal_bias=removal_bias
+            removal_bias=removal_bias,
+            brightness=brightness
         )
         
         # Atomically update both data structures
@@ -139,11 +142,12 @@ class KVMirror:
                 self._pos.update(new_mirror)
                 
                 # Calculate stats for metrics
-                num_kept = len(new_mirror)
-                num_pruned = len(self._pos) - num_kept  # Size *before* clear()/update()
+                original_size = len(self._pos)  # Current size before pruning
+                num_kept = len(new_mirror)      # Size after pruning
+                num_pruned = original_size - num_kept  # Actual number pruned
                 
                 # Update metrics (after state update)
-                set_gauge("kv_mirror_active_tokens", len(new_mirror))  # Post-prune active count
+                set_gauge("kv_mirror_active_tokens", num_kept)  # Post-prune active count
                 inc_counter("kv_mirror_tokens_pruned_total", num_pruned)  # Increment by num pruned
                 
                 # Verify integrity
@@ -173,12 +177,16 @@ class KVMirror:
             for instance_id, token in self._registry.items():
                 # Create a copy of the token to avoid external modification
                 registry_snapshot[instance_id] = copy.copy(token)
+            
+            # Calculate sizes while still holding the lock to ensure consistency
+            mirror_size = len(mirror_snapshot)
+            registry_size = len(registry_snapshot)
         
         return {
             'kv_mirror': mirror_snapshot,
             'tokens': registry_snapshot,
-            'mirror_size': len(mirror_snapshot),
-            'registry_size': len(self._registry)
+            'mirror_size': mirror_size,
+            'registry_size': registry_size
         }
         
     def get_current_size(self) -> int:
@@ -218,6 +226,124 @@ class KVMirror:
         with self._generation_step_lock:
             self._global_generation_step = 0
             
+    @timed_histogram("kv_mirror_update_token_seconds")
+    def update_token(self, position: int, new_token_id: int) -> bool:
+        """Atomically update a token's ID at the specified position.
+        
+        This is used by the Compactor system to repair/update tokens without changing their position.
+        
+        Args:
+            position: The position in the KV cache (0 to N-1)
+            new_token_id: The new token ID to assign
+            
+        Returns:
+            bool: True if update was successful, False if position not found or registry inconsistent
+        """
+        with self._lock:
+            # Check if position exists in mirror
+            if position not in self._pos:
+                print(f"[KV Mirror WARNING] Cannot update token: Position {position} not found in mirror")
+                return False
+                
+            # Get the instance_id for this position
+            instance_id = self._pos[position]
+            
+            # Check if instance_id exists in registry
+            if instance_id not in self._registry:
+                print(f"[KV Mirror WARNING] Inconsistency detected: Instance ID {instance_id} at position {position} not in registry")
+                return False
+                
+            # Update the token_id
+            self._registry[instance_id].token_id = new_token_id
+            
+            # Increment counter for updated tokens
+            inc_counter("kv_mirror_tokens_updated_total")
+            
+            return True
+            
+    @timed_histogram("kv_mirror_apply_diff_seconds")
+    def apply_diff(self, diff_list: list) -> Dict[str, int]:
+        """Apply a batch of token updates atomically.
+        
+        This method applies multiple token updates in a single atomic operation, which is more
+        efficient than calling update_token repeatedly. Each update is a tuple containing
+        (position, old_token_id_ignored, new_token_id).
+        
+        Args:
+            diff_list: List of tuples (position, old_token_id_ignored, new_token_id)
+            
+        Returns:
+            Dict with counts of successful and failed updates
+        """
+        results = {
+            'success': 0,
+            'failed_pos_not_found': 0,
+            'failed_reg_not_found': 0
+        }
+        
+        with self._lock:
+            for position, _, new_token_id in diff_list:
+                # Check if position exists in mirror
+                if position not in self._pos:
+                    results['failed_pos_not_found'] += 1
+                    continue
+                    
+                # Get the instance_id for this position
+                instance_id = self._pos[position]
+                
+                # Check if instance_id exists in registry
+                if instance_id not in self._registry:
+                    results['failed_reg_not_found'] += 1
+                    continue
+                    
+                # Update the token_id
+                self._registry[instance_id].token_id = new_token_id
+                results['success'] += 1
+            
+            # Update metrics if any successful updates
+            if results['success'] > 0:
+                inc_counter("kv_mirror_tokens_updated_total", results['success'])
+            
+        return results
+    
+    @timed_histogram("kv_mirror_update_brightness_seconds")
+    def batch_update_brightness(self, updates: Dict[int, float]) -> Dict[str, int]:
+        """Atomically update brightness scores for multiple token instances.
+        
+        This method is used by the Brightness Engine to apply updated brightness values
+        based on attention scores. All updates are applied atomically.
+        
+        Args:
+            updates: Dictionary mapping instance_id to new brightness value
+            
+        Returns:
+            Dict with counts of successful and failed updates
+        """
+        results = {
+            'success': 0,
+            'failed_instance_not_found': 0
+        }
+        
+        with self._lock:
+            for instance_id, new_brightness in updates.items():
+                # Check if instance_id exists in registry
+                if instance_id not in self._registry:
+                    results['failed_instance_not_found'] += 1
+                    continue
+                    
+                # Clamp the brightness value to valid range [0, 255]
+                clamped_brightness = max(0.0, min(255.0, new_brightness))
+                
+                # Update the brightness
+                self._registry[instance_id].brightness = clamped_brightness
+                results['success'] += 1
+            
+            # Update metrics if any successful updates
+            if results['success'] > 0:
+                inc_counter("kv_mirror_brightness_updates_total", results['success'])
+            
+        return results
+    
     def get_stats(self) -> Dict:
         """Get statistics about the KV Mirror state.
         

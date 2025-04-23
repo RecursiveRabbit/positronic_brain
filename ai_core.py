@@ -10,7 +10,9 @@ import torch.nn.functional as F
 import torch.cuda.amp as amp
 import torch.multiprocessing as mp
 from positronic_brain import config
-from positronic_brain.sampler import select_next_token
+from positronic_brain.sampler_types import SamplerState
+from positronic_brain.sampler import select_next_token, top_p_filter, top_k_filter, apply_repetition_penalty
+from positronic_brain.brightness_engine import update_brightness_scores
 from positronic_brain.model_io import load_model, move_cache_to_device, truncate_kv_cache, execute_forward_pass
 from positronic_brain.controller import SimpleContextController
 from positronic_brain.vram_monitor import vram_monitor_task
@@ -30,7 +32,7 @@ from typing import Dict, Optional, Set
 from positronic_brain.kv_mirror import KVMirror
 from positronic_brain.pruning import calculate_biased_attention_pruning_indices
 from transformers import AutoModelForCausalLM, AutoProcessor
-from ai_core_helpers import top_p_filter, top_k_filter, apply_repetition_penalty
+from positronic_brain.sampler import top_p_filter, top_k_filter, apply_repetition_penalty
 
 # --- CUDA Optimizations ---
 # CUDA optimizations moved to positronic_brain/model_io.py
@@ -41,7 +43,7 @@ from ai_core_helpers import top_p_filter, top_k_filter, apply_repetition_penalty
 # Global model objects
 model = None
 processor = None
-sampler_state = config.SamplerState()  # Global instance of sampler state
+sampler_state = SamplerState()  # Global instance of sampler state
 
 # Define Shared Event for Sliding Window Activation
 sliding_event = asyncio.Event()
@@ -420,7 +422,7 @@ async def _generate_next_token(
     input_ids: torch.Tensor,
     attention_mask: torch.Tensor,
     past_key_values: Optional[tuple],
-    sampler_state: config.SamplerState,
+    sampler_state: SamplerState,
     shared_state: Dict,
     output_queue: asyncio.Queue,
     resume_generation_event: asyncio.Event,
@@ -502,6 +504,21 @@ async def _generate_next_token(
             # Prepare a minimal outputs object for pruning function compatibility
             outputs = type('ModelOutputs', (), {})()
             outputs.attentions = outputs_attentions
+            
+            # --- Update Brightness Scores Based on Attention Patterns ---
+            # Only if we have attention data available
+            if outputs_attentions is not None:
+                try:
+                    brightness_results = update_brightness_scores(
+                        kv_mirror_manager=kv_mirror_manager,
+                        outputs=outputs,
+                        alpha=config.BRIGHTNESS_ALPHA,
+                        beta=config.BRIGHTNESS_BETA
+                    )
+                    if 'error' in brightness_results:
+                        print(f"[Brightness Engine WARNING] {brightness_results['error']}")
+                except Exception as e:
+                    print(f"[Brightness Engine ERROR] Failed to update brightness: {type(e).__name__}: {str(e)}")
             outputs.past_key_values = llm_output_past_key_values
             outputs.logits = logits
         except Exception as model_e:

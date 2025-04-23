@@ -24,6 +24,10 @@ CONTEXT_WINDOW_TARGET = 500  # Target size of KV cache after pruning
 # --- Pruning Configuration ---
 TEMPORAL_PENALTY_FACTOR = 0.005  # Factor for age-based pruning penalty
 
+# --- Brightness Engine Configuration ---
+BRIGHTNESS_ALPHA = 10.0  # Attention gain factor for brightness calculation
+BRIGHTNESS_BETA = 0.01   # Decay factor for brightness calculation
+
 # --- Sampling Configuration ---
 @dataclass
 class SamplerState:
