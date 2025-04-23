@@ -248,7 +248,7 @@ async def _handle_context_update(
                 # 2. Apply diffs to the KV Cache Tensors (if mirror update succeeded)
                 if diffs_to_apply and past_key_values is not None:
                     try:
-                        # This call uses the KVCachePatcher with its *placeholder* logic for now
+                        # Patch KV cache using our architecture-aware patcher implementation
                         past_key_values = kv_patcher.patch(past_key_values, diffs_to_apply)
                         print(f"[KVPatcher] KV cache patching attempted.")
                     except Exception as patch_e:
@@ -527,7 +527,7 @@ async def _generate_next_token(
                 # 2. Apply diffs to the KV Cache Tensors (if mirror update succeeded)
                 if diffs_to_apply and past_key_values is not None:
                     try:
-                        # This call uses the KVCachePatcher with its *placeholder* logic for now
+                        # Patch KV cache using our architecture-aware patcher implementation
                         past_key_values = kv_patcher.patch(past_key_values, diffs_to_apply)
                         print(f"[KVPatcher] KV cache patching attempted.")
                     except Exception as patch_e:

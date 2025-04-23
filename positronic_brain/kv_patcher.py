@@ -441,161 +441,160 @@ class KVCachePatcher:
             dtype = embedding.dtype
             shape = (1, projections.get('num_kv_heads', 8), 1, projections.get('head_dim', 128))
             return torch.zeros(shape, device=device, dtype=dtype), torch.zeros(shape, device=device, dtype=dtype)
-    
-@timed_histogram("kv_patcher_patch_seconds")
-def patch(
-    self,
-    past_key_values: Tuple[Tuple[torch.Tensor, torch.Tensor]],
-    diff_list: List[Tuple[int, int, int]]  # [(position, old_token_id, new_token_id)]
-) -> Tuple[Tuple[torch.Tensor, torch.Tensor]]:
-    """
-    Applies token changes from a diff list directly to the KV cache tensors.
+    @timed_histogram("kv_patcher_patch_seconds")
+    def patch(
+        self,
+        past_key_values: Tuple[Tuple[torch.Tensor, torch.Tensor]],
+        diff_list: List[Tuple[int, int, int]]  # [(position, old_token_id, new_token_id)]
+    ) -> Tuple[Tuple[torch.Tensor, torch.Tensor]]:
+        """
+        Applies token changes from a diff list directly to the KV cache tensors.
 
-    Args:
-        past_key_values: The current KV cache tuple (layers x (key, value)).
-        diff_list: A list of changes: (position_index, old_id, new_id).
+        Args:
+            past_key_values: The current KV cache tuple (layers x (key, value)).
+            diff_list: A list of changes: (position_index, old_id, new_id).
 
-    Returns:
-        The *modified* past_key_values tuple.
-    """
-    if not diff_list:
-        return past_key_values  # No changes needed
+        Returns:
+            The *modified* past_key_values tuple.
+        """
+        if not diff_list:
+            return past_key_values  # No changes needed
 
-    print(f"[KVPatcher] Applying {len(diff_list)} patches to KV cache using {self.model_type} architecture handler")
+        print(f"[KVPatcher] Applying {len(diff_list)} patches to KV cache using {self.model_type} architecture handler")
 
-    try:
-        # Get embedding layer on the correct device
-        embeddings = self.model.get_input_embeddings()
-        device = past_key_values[0][0].device  # Get device from cache tensors
+        try:
+            # Get embedding layer on the correct device
+            embeddings = self.model.get_input_embeddings()
+            device = past_key_values[0][0].device  # Get device from cache tensors
 
-        # Create tensor of new token IDs on the correct device
-        new_token_ids = torch.tensor([new_id for _, _, new_id in diff_list], device=device)
-        # Get new embeddings for all changed tokens in one go
-        # Shape: [num_patches, hidden_dim]
-        new_embeds = embeddings(new_token_ids)
-        self._debug_log(f"Generated new embeddings shape: {new_embeds.shape}")
-        
-        # Extract positions and create mapping for lookup during patching
-        # Create a position -> index mapping for faster lookup during patching
-        pos_to_idx = {pos: i for i, (pos, _, _) in enumerate(diff_list)}
-
-        # Create a mutable list of layers from the immutable cache tuple
-        new_past_key_values_list = list(past_key_values)
-
-        # Iterate through each layer in the cache
-        for layer_idx in range(len(new_past_key_values_list)):
-            # Get the key and value tensors for this layer
-            key_states, value_states = new_past_key_values_list[layer_idx]
+            # Create tensor of new token IDs on the correct device
+            new_token_ids = torch.tensor([new_id for _, _, new_id in diff_list], device=device)
+            # Get new embeddings for all changed tokens in one go
+            # Shape: [num_patches, hidden_dim]
+            new_embeds = embeddings(new_token_ids)
+            self._debug_log(f"Generated new embeddings shape: {new_embeds.shape}")
             
-            # Check tensor shapes
-            # Shape: [batch_size, num_heads, sequence_length, head_dim]
-            batch_size, num_heads, seq_len, head_dim = key_states.shape
-            self._debug_log(f"Layer {layer_idx} cache shapes: K={key_states.shape}, V={value_states.shape}")
+            # Extract positions and create mapping for lookup during patching
+            # Create a position -> index mapping for faster lookup during patching
+            pos_to_idx = {pos: i for i, (pos, _, _) in enumerate(diff_list)}
 
-            # Make copies to modify (prevents modifying views / in-place errors)
-            new_key_states = key_states.clone()
-            new_value_states = value_states.clone()
+            # Create a mutable list of layers from the immutable cache tuple
+            new_past_key_values_list = list(past_key_values)
 
-            # Get model-specific projection components for this layer
-            projections = self._get_model_projections(layer_idx)
-            
-            # Optimization: Process unique positions to avoid duplicate work
-            # The diffuser may rarely suggest multiple different tokens for the same position,
-            # which we handle by only applying the latest change to each position.
-            unique_positions = set(pos for pos, _, _ in diff_list)
-            
-            # Process each position
-            for pos in unique_positions:
-                # Skip invalid positions
-                if not (0 <= pos < seq_len):
-                    print(f"[KVPatcher Warning] Position {pos} out of bounds for layer {layer_idx} cache (len {seq_len})")
-                    inc_counter("kv_patcher_out_of_bounds")
-                    continue
-                    
-                # Find the index of this position in our diff_list (use the latest if multiple)
-                candidates = [(i, new_id) for i, (p, _, new_id) in enumerate(diff_list) if p == pos]
-                if not candidates:
-                    continue  # Shouldn't happen with our unique_positions approach
-                    
-                # Use the last change for this position (diff_list is ordered)
-                idx, new_id = candidates[-1]
+            # Iterate through each layer in the cache
+            for layer_idx in range(len(new_past_key_values_list)):
+                # Get the key and value tensors for this layer
+                key_states, value_states = new_past_key_values_list[layer_idx]
                 
-                # Get the embedding for this token
-                token_embedding = new_embeds[idx:idx+1]  # Keep batch dimension
+                # Check tensor shapes
+                # Shape: [batch_size, num_heads, sequence_length, head_dim]
+                batch_size, num_heads, seq_len, head_dim = key_states.shape
+                self._debug_log(f"Layer {layer_idx} cache shapes: K={key_states.shape}, V={value_states.shape}")
+
+                # Make copies to modify (prevents modifying views / in-place errors)
+                new_key_states = key_states.clone()
+                new_value_states = value_states.clone()
+
+                # Get model-specific projection components for this layer
+                projections = self._get_model_projections(layer_idx)
                 
-                # Calculate K/V vectors using architecture-specific methods
-                if self.model_type == 'kimi-vl':
-                    k_slice, v_slice = self._calculate_kv_kimi(token_embedding, projections, pos)
-                elif self.model_type == 'llama':
-                    k_slice, v_slice = self._calculate_kv_llama(token_embedding, projections, pos)
-                elif self.model_type == 'mistral':
-                    k_slice, v_slice = self._calculate_kv_mistral(token_embedding, projections, pos)
-                else:  # Generic fallback
-                    # For unknown architectures, try the LLaMA approach first
-                    try:
+                # Optimization: Process unique positions to avoid duplicate work
+                # The diffuser may rarely suggest multiple different tokens for the same position,
+                # which we handle by only applying the latest change to each position.
+                unique_positions = set(pos for pos, _, _ in diff_list)
+                
+                # Process each position
+                for pos in unique_positions:
+                    # Skip invalid positions
+                    if not (0 <= pos < seq_len):
+                        print(f"[KVPatcher Warning] Position {pos} out of bounds for layer {layer_idx} cache (len {seq_len})")
+                        inc_counter("kv_patcher_out_of_bounds")
+                        continue
+                        
+                    # Find the index of this position in our diff_list (use the latest if multiple)
+                    candidates = [(i, new_id) for i, (p, _, new_id) in enumerate(diff_list) if p == pos]
+                    if not candidates:
+                        continue  # Shouldn't happen with our unique_positions approach
+                        
+                    # Use the last change for this position (diff_list is ordered)
+                    idx, new_id = candidates[-1]
+                    
+                    # Get the embedding for this token
+                    token_embedding = new_embeds[idx:idx+1]  # Keep batch dimension
+                    
+                    # Calculate K/V vectors using architecture-specific methods
+                    if self.model_type == 'kimi-vl':
+                        k_slice, v_slice = self._calculate_kv_kimi(token_embedding, projections, pos)
+                    elif self.model_type == 'llama':
                         k_slice, v_slice = self._calculate_kv_llama(token_embedding, projections, pos)
+                    elif self.model_type == 'mistral':
+                        k_slice, v_slice = self._calculate_kv_mistral(token_embedding, projections, pos)
+                    else:  # Generic fallback
+                        # For unknown architectures, try the LLaMA approach first
+                        try:
+                            k_slice, v_slice = self._calculate_kv_llama(token_embedding, projections, pos)
+                        except Exception as e:
+                            self._debug_log(f"Generic fallback K/V calculation error: {e}")
+                            # Create zero tensors as fallback
+                            k_slice = torch.zeros((1, num_heads, 1, head_dim), device=device, dtype=key_states.dtype)
+                            v_slice = torch.zeros((1, num_heads, 1, head_dim), device=device, dtype=value_states.dtype)
+                    
+                    # Handle GQA/MQA head repetition in Mistral if needed
+                    # In GQA, we may need to repeat each KV head across multiple query heads
+                    if self.model_type == 'mistral':
+                        # Check if we need to handle GQA
+                        num_kv_heads = projections.get('num_kv_heads', num_heads)
+                        if num_kv_heads < num_heads:
+                            # For Mistral with GQA, KV heads are repeated for multiple query heads
+                            # If k_slice has fewer heads than the cache, we need to repeat them
+                            if k_slice.shape[1] != num_heads:
+                                repeats = num_heads // num_kv_heads
+                                # Ensure we have the correct device and shape for efficient assignment
+                                if repeats > 1:
+                                    self._debug_log(f"Expanding {num_kv_heads} KV heads to {num_heads} heads for GQA")
+                                    # For each KV head, it serves 'repeats' number of query heads
+                                    # We need to compute the target shape for efficient assignment later
+                    
+                    # Apply the calculated K/V slices to the cache at the target position
+                    try:
+                        # Ensure shapes match expected dimensions
+                        if k_slice.shape[1] == num_heads and v_slice.shape[1] == num_heads:
+                            # Standard case - direct assignment
+                            new_key_states[:, :, pos, :] = k_slice[:, :, 0, :]
+                            new_value_states[:, :, pos, :] = v_slice[:, :, 0, :]
+                        elif self.model_type == 'mistral' and k_slice.shape[1] < num_heads:
+                            # Handle GQA case where we have fewer KV heads than attention heads
+                            num_kv_heads = k_slice.shape[1]
+                            # Each KV head maps to multiple attention heads
+                            for i in range(num_heads):
+                                kv_head_idx = i % num_kv_heads  # Map to corresponding KV head
+                                new_key_states[:, i, pos, :] = k_slice[:, kv_head_idx, 0, :]
+                                new_value_states[:, i, pos, :] = v_slice[:, kv_head_idx, 0, :]
+                        else:
+                            # Mismatch - log error but still try basic assignment
+                            print(f"[KVPatcher Warning] Shape mismatch in layer {layer_idx}: cache has {num_heads} heads, calculated slices have {k_slice.shape[1]} heads")
+                            # Try broadcasting assignment if sizes are compatible
+                            if k_slice.shape[-1] == head_dim:
+                                new_key_states[:, :, pos, :] = k_slice[:, 0, 0, :]
+                                new_value_states[:, :, pos, :] = v_slice[:, 0, 0, :]
+                                
+                        inc_counter("kv_patcher_patches_applied")
                     except Exception as e:
-                        self._debug_log(f"Generic fallback K/V calculation error: {e}")
-                        # Create zero tensors as fallback
-                        k_slice = torch.zeros((1, num_heads, 1, head_dim), device=device, dtype=key_states.dtype)
-                        v_slice = torch.zeros((1, num_heads, 1, head_dim), device=device, dtype=value_states.dtype)
-                
-                # Handle GQA/MQA head repetition in Mistral if needed
-                # In GQA, we may need to repeat each KV head across multiple query heads
-                if self.model_type == 'mistral':
-                    # Check if we need to handle GQA
-                    num_kv_heads = projections.get('num_kv_heads', num_heads)
-                    if num_kv_heads < num_heads:
-                        # For Mistral with GQA, KV heads are repeated for multiple query heads
-                        # If k_slice has fewer heads than the cache, we need to repeat them
-                        if k_slice.shape[1] != num_heads:
-                            repeats = num_heads // num_kv_heads
-                            # Ensure we have the correct device and shape for efficient assignment
-                            if repeats > 1:
-                                self._debug_log(f"Expanding {num_kv_heads} KV heads to {num_heads} heads for GQA")
-                                # For each KV head, it serves 'repeats' number of query heads
-                                # We need to compute the target shape for efficient assignment later
-                
-                # Apply the calculated K/V slices to the cache at the target position
-                try:
-                    # Ensure shapes match expected dimensions
-                    if k_slice.shape[1] == num_heads and v_slice.shape[1] == num_heads:
-                        # Standard case - direct assignment
-                        new_key_states[:, :, pos, :] = k_slice[:, :, 0, :]
-                        new_value_states[:, :, pos, :] = v_slice[:, :, 0, :]
-                    elif self.model_type == 'mistral' and k_slice.shape[1] < num_heads:
-                        # Handle GQA case where we have fewer KV heads than attention heads
-                        num_kv_heads = k_slice.shape[1]
-                        # Each KV head maps to multiple attention heads
-                        for i in range(num_heads):
-                            kv_head_idx = i % num_kv_heads  # Map to corresponding KV head
-                            new_key_states[:, i, pos, :] = k_slice[:, kv_head_idx, 0, :]
-                            new_value_states[:, i, pos, :] = v_slice[:, kv_head_idx, 0, :]
-                    else:
-                        # Mismatch - log error but still try basic assignment
-                        print(f"[KVPatcher Warning] Shape mismatch in layer {layer_idx}: cache has {num_heads} heads, calculated slices have {k_slice.shape[1]} heads")
-                        # Try broadcasting assignment if sizes are compatible
-                        if k_slice.shape[-1] == head_dim:
-                            new_key_states[:, :, pos, :] = k_slice[:, 0, 0, :]
-                            new_value_states[:, :, pos, :] = v_slice[:, 0, 0, :]
-                            
-                    inc_counter("kv_patcher_patches_applied")
-                except Exception as e:
-                    print(f"[KVPatcher Error] Failed to apply patch at position {pos} in layer {layer_idx}: {e}")
-                    inc_counter("kv_patcher_error")
+                        print(f"[KVPatcher Error] Failed to apply patch at position {pos} in layer {layer_idx}: {e}")
+                        inc_counter("kv_patcher_error")
 
-            # Update the layer tuple in the list
-            new_past_key_values_list[layer_idx] = (new_key_states, new_value_states)
-            
-        # Convert back to tuple
-        patched_kv_cache = tuple(new_past_key_values_list)
-        print(f"[KVPatcher] Successfully applied {len(diff_list)} patches to KV cache")
-        return patched_kv_cache
+                # Update the layer tuple in the list
+                new_past_key_values_list[layer_idx] = (new_key_states, new_value_states)
+                
+            # Convert back to tuple
+            patched_kv_cache = tuple(new_past_key_values_list)
+            print(f"[KVPatcher] Successfully applied {len(diff_list)} patches to KV cache")
+            return patched_kv_cache
 
-    except Exception as e:
-        import traceback
-        print(f"[KVPatcher Error] Failed to apply patches: {type(e).__name__} - {e}")
-        print(traceback.format_exc())
-        inc_counter("kv_patcher_error")
-        # Return the *original* cache if patching fails to avoid corrupting state
-        return past_key_values
+        except Exception as e:
+            import traceback
+            print(f"[KVPatcher Error] Failed to apply patches: {type(e).__name__} - {e}")
+            print(traceback.format_exc())
+            inc_counter("kv_patcher_error")
+            # Return the *original* cache if patching fails to avoid corrupting state
+            return past_key_values

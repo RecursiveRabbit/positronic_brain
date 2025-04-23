@@ -18,6 +18,10 @@ CPU_DEVICE = "cpu"
 
 # --- Performance/Optimization Configuration ---
 OFFLOAD_KV_CACHE_TO_CPU = False
+MAX_SEQUENCE_LENGTH = 2048        # Maximum sequence length for the model
+MAX_NEW_TOKENS = 8192           # Maximum number of new tokens to generate
+PRUNING_INTERVAL = 20            # Interval for pruning the KV cache
+MAX_BEAM_SOURCES = 1             # Maximum number of beam sources for sampling
 
 # --- Context Window Configuration ---
 CONTEXT_WINDOW_TARGET = 500  # Target size of KV cache after pruning
