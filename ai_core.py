@@ -208,15 +208,29 @@ async def _handle_context_update(
             # Get the device of the first cache tensor
             target_device = past_key_values[0][0].device if past_key_values else model.device
             
-            # Create mask for current injection tokens plus all cached tokens
-            total_seq_len = model_input_ids.shape[1] + cache_seq_len
-            injection_attention_mask = torch.ones(1, total_seq_len, device=target_device)
+            # FIXED: For context injection with KV cache, we need to use the proper mask width
+            # but ALSO create explicit position IDs to ensure proper RoPE functionality
+            
+            # Create position_ids for all tokens being injected
+            # These should start at cache_seq_len and increment for each token
+            position_ids = torch.arange(
+                cache_seq_len,
+                cache_seq_len + model_input_ids.shape[1],
+                dtype=torch.long,
+                device=target_device
+            ).unsqueeze(0)  # Add batch dimension
+            
+            # Create a boolean attention mask for injected tokens
+            # Use the simple attention mask from update_attention_mask
+            injection_attention_mask = update_attention_mask
             
             # Debug logging
-            print(f"[Injection] Creating mask of shape {injection_attention_mask.shape} for input_ids {model_input_ids.shape} and cache_len {cache_seq_len}")
+            print(f"[Injection] Creating position_ids from {cache_seq_len} to {cache_seq_len + model_input_ids.shape[1] - 1}")
+            print(f"[Injection] Using attention mask of shape {injection_attention_mask.shape} for input_ids {model_input_ids.shape}")
         else:
-            # No cache yet, just use None
+            # No cache yet, use None for injection_attention_mask and no explicit position_ids
             injection_attention_mask = None
+            position_ids = None
         
         # --- Apply Pending Patches (if any) ---
         if kv_patcher is not None and pending_diffs_queue is not None and past_key_values is not None:
@@ -260,12 +274,25 @@ async def _handle_context_update(
         
         # Perform an incremental forward pass with the existing KV cache using external function
         try:
-            logits, llm_output_past_key_values, outputs_attentions = execute_forward_pass(
-                model=model,
-                input_ids=model_input_ids,
-                attention_mask=injection_attention_mask,  # Use our correctly sized mask
-                past_key_values=past_key_values  # Use existing cache
-            )
+            # Use torch.no_grad() for inference optimization
+            with torch.no_grad():
+                # Include position_ids when using KV cache
+                if past_key_values is not None and position_ids is not None:
+                    logits, llm_output_past_key_values, outputs_attentions = execute_forward_pass(
+                        model=model,
+                        input_ids=model_input_ids,
+                        attention_mask=injection_attention_mask,  # Use our correctly sized mask
+                        position_ids=position_ids,  # Explicitly pass position_ids 
+                        past_key_values=past_key_values  # Use existing cache
+                    )
+                else:
+                    # Initial pass or no explicit position_ids needed
+                    logits, llm_output_past_key_values, outputs_attentions = execute_forward_pass(
+                        model=model,
+                        input_ids=model_input_ids,
+                        attention_mask=injection_attention_mask,  # Use our correctly sized mask
+                        past_key_values=past_key_values  # Use existing cache
+                    )
             
             # Prepare a minimal outputs object for pruning function compatibility
             outputs = type('ModelOutputs', (), {})()
@@ -406,9 +433,18 @@ async def _generate_next_token(
             # First, get the device of the first cache tensor to ensure proper device placement
             target_device = past_key_values[0][0].device
             
-            # Create mask for current token (1) plus all cached tokens
-            total_seq_len = model_input_ids.shape[1] + cache_seq_len
-            current_attention_mask_for_call = torch.ones(1, total_seq_len, device=target_device)
+            # FIXED: Use only the last token's attention mask slice, not a full mask
+            # This ensures proper position_ids inference
+            current_attention_mask_for_call = attention_mask[:, -1:]
+            
+            # FIXED: Explicitly create position_ids to ensure correct positioning with KV cache
+            # This is critical for RoPE to work correctly
+            position_ids = torch.full(
+                (1, 1),  # Shape for one new token
+                cache_seq_len,  # The next absolute position
+                device=model_input_ids.device,  # Match input device
+                dtype=torch.long
+            )
 
         try:
             # Debug logging for standard generation path
@@ -475,12 +511,25 @@ async def _generate_next_token(
         
         # --- Step 1: Standard Model Forward Pass using external function ---
         try:
-            logits, llm_output_past_key_values, outputs_attentions = execute_forward_pass(
-                model=model, 
-                input_ids=model_input_ids.to(model.device),
-                attention_mask=current_attention_mask_for_call.to(model.device),
-                past_key_values=past_key_values
-            )
+            # Use torch.no_grad() for inference optimization
+            with torch.no_grad():
+                # Include position_ids when using KV cache
+                if past_key_values is not None:
+                    logits, llm_output_past_key_values, outputs_attentions = execute_forward_pass(
+                        model=model, 
+                        input_ids=model_input_ids.to(model.device),
+                        attention_mask=current_attention_mask_for_call.to(model.device),
+                        position_ids=position_ids,  # Explicitly pass position_ids
+                        past_key_values=past_key_values
+                    )
+                else:
+                    # Initial pass (no KV cache) doesn't need explicit position_ids
+                    logits, llm_output_past_key_values, outputs_attentions = execute_forward_pass(
+                        model=model, 
+                        input_ids=model_input_ids.to(model.device),
+                        attention_mask=current_attention_mask_for_call.to(model.device),
+                        past_key_values=past_key_values
+                    )
             # Update past_key_values for the next iteration
             past_key_values = llm_output_past_key_values
             
