@@ -331,18 +331,18 @@ async def _handle_context_update(
             # Log information about context size
             print(f"[Context Injection] Current context length: {current_cache_len} tokens", file=sys.stderr)
             
-            # Re-enable brightness score initialization for newly added tokens
-            for i in range(update_tokens.shape[1]):
-                # Get the position in the overall context
-                token_pos = current_cache_len - update_tokens.shape[1] + i
-                try:
-                    # Set initial brightness for new tokens
-                    # We use a neutral initial value since we don't have attention scores yet
-                    kv_mirror_manager.set_token_brightness(token_pos, config.INITIAL_TOKEN_BRIGHTNESS)
-                    # Token brightness will be properly updated in _generate_next_token after the next forward pass
-                except Exception as e:
-                    print(f"[Brightness] Failed to initialize brightness for token at position {token_pos}: {e}", file=sys.stderr)
-            print(f"[Brightness] Initialized brightness for {update_tokens.shape[1]} injected tokens", file=sys.stderr)
+            # Temporarily disable brightness score initialization for O1 triage testing
+            # for i in range(update_tokens.shape[1]):
+            #     # Get the position in the overall context
+            #     token_pos = current_cache_len - update_tokens.shape[1] + i
+            #     try:
+            #         # Set initial brightness for new tokens
+            #         # We use a neutral initial value since we don't have attention scores yet
+            #         kv_mirror_manager.set_token_brightness(token_pos, config.INITIAL_TOKEN_BRIGHTNESS)
+            #         # Token brightness will be properly updated in _generate_next_token after the next forward pass
+            #     except Exception as e:
+            #         print(f"[Brightness] Failed to initialize brightness for token at position {token_pos}: {e}", file=sys.stderr)
+            print(f"[O1 Triage] Brightness initialization disabled for testing", file=sys.stderr)
             
             # Get statistics for logging
             stats = kv_mirror_manager.get_stats()
@@ -433,12 +433,10 @@ async def _generate_next_token(
             # First, get the device of the first cache tensor to ensure proper device placement
             target_device = past_key_values[0][0].device
             
-            # TEST: Use full attention mask with explicit position_ids
-            # Create full length mask for all tokens (current + cached)
-            target_device = past_key_values[0][0].device
-            cache_seq_len = past_key_values[0][0].shape[2]
-            total_seq_len = model_input_ids.shape[1] + cache_seq_len # model_input_ids is just the last token here
-            current_attention_mask_for_call = torch.ones(1, total_seq_len, device=target_device, dtype=attention_mask.dtype)
+            # O1 Fix: Set attention_mask to None during KV cache steps
+            # Let HF handle the internal causal mask construction
+            # This prevents confusing the internal mask preparation (_prepare_decoder_attention_mask)
+            current_attention_mask_for_call = None
             
             # FIXED: Explicitly create position_ids to ensure correct positioning with KV cache
             # This is critical for RoPE to work correctly
@@ -674,15 +672,16 @@ async def _generate_next_token(
                 if generated_token_id not in shared_state['token_frequency']:
                     shared_state['token_frequency'][generated_token_id] = 0
                 shared_state['token_frequency'][generated_token_id] += 1
-        # Re-enable brightness updates - core generation loop now stable
-        if kv_mirror_manager is not None and not skip_iteration:
-            brightness_scores = update_brightness_scores(
-                kv_mirror_manager=kv_mirror_manager,
-                outputs=outputs,
-                alpha=config.BRIGHTNESS_ALPHA,
-                beta=config.BRIGHTNESS_BETA
-            )
-            print(f"[Brightness] Updated scores for token index {input_ids.shape[1]-1}", file=sys.stderr)
+        # Temporarily disable brightness updates - no attentions with output_attentions=False
+        # if kv_mirror_manager is not None and not skip_iteration:
+        #     brightness_scores = update_brightness_scores(
+        #         kv_mirror_manager=kv_mirror_manager,
+        #         outputs=outputs,
+        #         alpha=config.BRIGHTNESS_ALPHA,
+        #         beta=config.BRIGHTNESS_BETA
+        #     )
+        #     print(f"[Brightness] Updated scores for token index {input_ids.shape[1]-1}", file=sys.stderr)
+        print(f"[O1 Triage] Brightness updates disabled for testing", file=sys.stderr)
 
         # Process diffs from Compactor (if any)
         if past_key_values is not None and pending_diffs_queue is not None:

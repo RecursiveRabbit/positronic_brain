@@ -189,26 +189,55 @@ class KVCachePatcher:
                     model_layers = self.model.model.layers
                     if layer_idx < len(model_layers):
                         layer = model_layers[layer_idx]
+                        
+                        # Extract input layer normalization (critical for proper K/V projection)
+                        # TinyLlama applies this norm before computing attention
+                        if hasattr(layer, 'input_layernorm'):
+                            result['input_layernorm'] = layer.input_layernorm
+                            self._debug_log(f"Found input_layernorm for layer {layer_idx}")
+                        
                         if hasattr(layer, 'self_attn'):
                             attn = layer.self_attn
                             
                             # Direct K/V projections
                             result['k_proj'] = attn.k_proj if hasattr(attn, 'k_proj') else None
                             result['v_proj'] = attn.v_proj if hasattr(attn, 'v_proj') else None
-                            # Get rotary embeddings component
-                            result['rotary_emb'] = attn.rotary_emb if hasattr(attn, 'rotary_emb') else None
+                            
+                            # Get rotary embeddings component - for TinyLlama this is at model level, not per layer
+                            # First check if it exists at the attn level as in some models
+                            if hasattr(attn, 'rotary_emb'):
+                                result['rotary_emb'] = attn.rotary_emb
+                            # For TinyLlama, the rotary embedding module is shared at the model level
+                            elif hasattr(self.model, 'model') and hasattr(self.model.model, 'rotary_emb'):
+                                result['rotary_emb'] = self.model.model.rotary_emb
+                                self._debug_log(f"Using model-level rotary_emb (TinyLlama style)")
+                            
                             # Store size parameters
                             if hasattr(attn, 'num_heads'):
                                 result['num_heads'] = attn.num_heads
                             if hasattr(attn, 'num_key_value_heads'): 
                                 result['num_kv_heads'] = attn.num_key_value_heads
+                            elif hasattr(self.model.config, 'num_key_value_heads'):
+                                # TinyLlama-1.1B has 4 KV heads specified in config
+                                result['num_kv_heads'] = self.model.config.num_key_value_heads
+                                self._debug_log(f"Using config-level num_key_value_heads: {result['num_kv_heads']}")
+                            
                             if hasattr(attn, 'head_dim'):
                                 result['head_dim'] = attn.head_dim
+                            elif hasattr(self.model.config, 'hidden_size') and hasattr(self.model.config, 'num_attention_heads'):
+                                # TinyLlama has head_dim = hidden_size / num_attention_heads
+                                # For TinyLlama-1.1B, that's 2048 / 32 = 64
+                                result['head_dim'] = self.model.config.hidden_size // self.model.config.num_attention_heads
+                                self._debug_log(f"Calculated head_dim from config: {result['head_dim']}")
                             
-                            # For Mistral, we need to check for head repetition pattern (GQA)
-                            if self.model_type == 'mistral':
+                            # For Mistral & TinyLlama, we need to check for head repetition pattern (GQA)
+                            if self.model_type in ['mistral', 'llama']:
                                 if hasattr(attn, 'num_key_value_groups'):
                                     result['num_key_value_groups'] = attn.num_key_value_groups
+                                elif hasattr(self.model.config, 'num_attention_heads') and 'num_kv_heads' in result:
+                                    # TinyLlama-1.1B has 32 attention heads and 4 KV heads (8 groups)
+                                    result['num_key_value_groups'] = self.model.config.num_attention_heads // result['num_kv_heads']
+                                    self._debug_log(f"Calculated num_key_value_groups: {result['num_key_value_groups']}")
                                     
             # Handle other models or add additional architectures here
                             
@@ -344,30 +373,59 @@ class KVCachePatcher:
     
     def _calculate_kv_llama(self, embedding: torch.Tensor, projections: Dict[str, Any], position: int) -> Tuple[torch.Tensor, torch.Tensor]:
         """
-        Calculate key and value tensors for LLaMA architecture.
+        Calculate key and value tensors for LLaMA architecture (including TinyLlama).
+        
+        This implementation specifically handles TinyLlama's GQA structure with 4 KV heads
+        and the correct RoPE application using TinyLlama's rotary embedding module.
         
         Args:
             embedding: The token embedding [1, hidden_size]
             projections: Dict with projection matrices and parameters
-            position: The absolute position for this token (for RoPE)
+            position: The absolute position in the sequence for this token (for RoPE)
             
         Returns:
             Tuple of (key_slice, value_slice) each with shape [1, num_kv_heads, 1, head_dim]
         """
         try:
             # Get the projection matrices and parameters
+            input_layernorm = projections.get('input_layernorm')
             k_proj = projections['k_proj']
             v_proj = projections['v_proj']
             rotary_emb = projections.get('rotary_emb')
-            head_dim = projections.get('head_dim', 128)  # Default for LLaMA
-            num_kv_heads = projections.get('num_kv_heads', 32)  # Default for LLaMA
+            head_dim = projections.get('head_dim', 64)  # TinyLlama uses 64
+            num_kv_heads = projections.get('num_kv_heads', 4)  # TinyLlama uses 4 K/V heads
             
             device = embedding.device
             dtype = embedding.dtype
             
-            # 1. Direct projection to key/value spaces
-            k = k_proj(embedding)  # [1, num_kv_heads * head_dim]
-            v = v_proj(embedding)  # [1, num_kv_heads * head_dim]
+            # 0. Apply layer normalization to embedding if provided (crucial for accurate projections)
+            # This mimics how hidden states are normalized before K/V projection in the model
+            normalized_embedding = embedding
+            if input_layernorm is not None:
+                # Ensure embedding has batch and sequence dimensions [batch=1, seq=1, hidden]
+                if embedding.dim() == 2 and embedding.size(0) == 1:
+                    # Add sequence dimension for normalization
+                    normalized_embedding = embedding.unsqueeze(1)
+                elif embedding.dim() == 1:
+                    # Add batch and sequence dimensions
+                    normalized_embedding = embedding.unsqueeze(0).unsqueeze(0)
+                
+                # Apply the layer's specific input normalization
+                normalized_embedding = input_layernorm(normalized_embedding)
+                self._debug_log(f"Applied input_layernorm to embedding: {normalized_embedding.shape}")
+            else:
+                # Ensure correct shape if no normalization
+                if embedding.dim() == 1:
+                    normalized_embedding = embedding.unsqueeze(0)  # [1, hidden]
+                    
+            # 1. Project normalized embedding to key/value spaces
+            k = k_proj(normalized_embedding)  # [batch, seq, num_kv_heads * head_dim] or [batch, num_kv_heads * head_dim]
+            v = v_proj(normalized_embedding)  # [batch, seq, num_kv_heads * head_dim] or [batch, num_kv_heads * head_dim]
+            
+            # Ensure k and v have the right shape by removing seq dim if present
+            if k.dim() == 3:
+                k = k.squeeze(1)  # [batch, num_kv_heads * head_dim]
+                v = v.squeeze(1)  # [batch, num_kv_heads * head_dim]
             
             # 2. Reshape for multi-head attention
             k = k.view(1, num_kv_heads, head_dim)
@@ -377,9 +435,43 @@ class KVCachePatcher:
             k = k.unsqueeze(2)  # [1, num_kv_heads, 1, head_dim]
             v = v.unsqueeze(2)  # [1, num_kv_heads, 1, head_dim]
             
-            # 4. Apply rotary position embeddings to the entire k vector
+            # 4. Apply rotary position embeddings to the key tensor
             if rotary_emb is not None:
-                k = self._apply_rotary_embedding(k, position, rotary_emb)
+                # For TinyLlama, we need to manually apply RoPE using the rotate_half logic
+                # as described in the LlamaRotaryEmbedding implementation
+                try:
+                    # Create a position tensor matching TinyLlama's expected format
+                    position_ids = torch.tensor([[position]], device=device)
+                    
+                    # Get cos and sin from the rotary embedding module
+                    cos_sin = rotary_emb(k, position_ids=position_ids)
+                    
+                    # Check if we got a tuple of (cos, sin) as expected
+                    if isinstance(cos_sin, tuple) and len(cos_sin) == 2:
+                        cos, sin = cos_sin
+                        
+                        # Define the rotate_half function as used in transformers/models/llama/modeling_llama.py
+                        def rotate_half(x):
+                            """Rotates half the hidden dims of the input."""
+                            x1 = x[..., :x.shape[-1] // 2]
+                            x2 = x[..., x.shape[-1] // 2:]
+                            return torch.cat((-x2, x1), dim=-1)
+                        
+                        # Apply the RoPE rotation using the prescribed formula
+                        # Ensure cos and sin are broadcastable to k's shape
+                        cos = cos.unsqueeze(1)  # Add head dimension
+                        sin = sin.unsqueeze(1)  # Add head dimension
+                        
+                        k_rot = (k * cos) + (rotate_half(k) * sin)
+                        self._debug_log(f"Applied manual RoPE to key at position {position}")
+                        k = k_rot
+                    else:
+                        # If we didn't get (cos, sin), fall back to the generic handler
+                        k = self._apply_rotary_embedding(k, position, rotary_emb)
+                except Exception as rope_e:
+                    self._debug_log(f"Error in manual RoPE application: {rope_e}, falling back")
+                    # Fall back to generic handler
+                    k = self._apply_rotary_embedding(k, position, rotary_emb)
             
             return k, v
             
@@ -474,12 +566,15 @@ class KVCachePatcher:
             new_embeds = embeddings(new_token_ids)
             self._debug_log(f"Generated new embeddings shape: {new_embeds.shape}")
             
-            # Extract positions and create mapping for lookup during patching
-            # Create a position -> index mapping for faster lookup during patching
-            pos_to_idx = {pos: i for i, (pos, _, _) in enumerate(diff_list)}
-
             # Create a mutable list of layers from the immutable cache tuple
             new_past_key_values_list = list(past_key_values)
+
+            # Optimization: Process unique positions to avoid duplicate work
+            # The diffuser may rarely suggest multiple different tokens for the same position,
+            # which we handle by only applying the latest change to each position.
+            pos_to_diff = {}
+            for i, (pos, _, new_id) in enumerate(diff_list):
+                pos_to_diff[pos] = (i, new_id)
 
             # Iterate through each layer in the cache
             for layer_idx in range(len(new_past_key_values_list)):
@@ -498,95 +593,69 @@ class KVCachePatcher:
                 # Get model-specific projection components for this layer
                 projections = self._get_model_projections(layer_idx)
                 
-                # Optimization: Process unique positions to avoid duplicate work
-                # The diffuser may rarely suggest multiple different tokens for the same position,
-                # which we handle by only applying the latest change to each position.
-                unique_positions = set(pos for pos, _, _ in diff_list)
-                
                 # Process each position
-                for pos in unique_positions:
+                for pos, (idx, new_id) in pos_to_diff.items():
                     # Skip invalid positions
                     if not (0 <= pos < seq_len):
                         print(f"[KVPatcher Warning] Position {pos} out of bounds for layer {layer_idx} cache (len {seq_len})")
                         inc_counter("kv_patcher_out_of_bounds")
                         continue
-                        
-                    # Find the index of this position in our diff_list (use the latest if multiple)
-                    candidates = [(i, new_id) for i, (p, _, new_id) in enumerate(diff_list) if p == pos]
-                    if not candidates:
-                        continue  # Shouldn't happen with our unique_positions approach
-                        
-                    # Use the last change for this position (diff_list is ordered)
-                    idx, new_id = candidates[-1]
                     
-                    # Get the embedding for this token
-                    token_embedding = new_embeds[idx:idx+1]  # Keep batch dimension
-                    
-                    # Calculate K/V vectors using architecture-specific methods
-                    if self.model_type == 'kimi-vl':
-                        k_slice, v_slice = self._calculate_kv_kimi(token_embedding, projections, pos)
-                    elif self.model_type == 'llama':
-                        k_slice, v_slice = self._calculate_kv_llama(token_embedding, projections, pos)
-                    elif self.model_type == 'mistral':
-                        k_slice, v_slice = self._calculate_kv_mistral(token_embedding, projections, pos)
-                    else:  # Generic fallback
-                        # For unknown architectures, try the LLaMA approach first
-                        try:
-                            k_slice, v_slice = self._calculate_kv_llama(token_embedding, projections, pos)
-                        except Exception as e:
-                            self._debug_log(f"Generic fallback K/V calculation error: {e}")
-                            # Create zero tensors as fallback
-                            k_slice = torch.zeros((1, num_heads, 1, head_dim), device=device, dtype=key_states.dtype)
-                            v_slice = torch.zeros((1, num_heads, 1, head_dim), device=device, dtype=value_states.dtype)
-                    
-                    # Handle GQA/MQA head repetition in Mistral if needed
-                    # In GQA, we may need to repeat each KV head across multiple query heads
-                    if self.model_type == 'mistral':
-                        # Check if we need to handle GQA
-                        num_kv_heads = projections.get('num_kv_heads', num_heads)
-                        if num_kv_heads < num_heads:
-                            # For Mistral with GQA, KV heads are repeated for multiple query heads
-                            # If k_slice has fewer heads than the cache, we need to repeat them
-                            if k_slice.shape[1] != num_heads:
-                                repeats = num_heads // num_kv_heads
-                                # Ensure we have the correct device and shape for efficient assignment
-                                if repeats > 1:
-                                    self._debug_log(f"Expanding {num_kv_heads} KV heads to {num_heads} heads for GQA")
-                                    # For each KV head, it serves 'repeats' number of query heads
-                                    # We need to compute the target shape for efficient assignment later
-                    
-                    # Apply the calculated K/V slices to the cache at the target position
                     try:
-                        # Ensure shapes match expected dimensions
-                        if k_slice.shape[1] == num_heads and v_slice.shape[1] == num_heads:
-                            # Standard case - direct assignment
-                            new_key_states[:, :, pos, :] = k_slice[:, :, 0, :]
-                            new_value_states[:, :, pos, :] = v_slice[:, :, 0, :]
-                        elif self.model_type == 'mistral' and k_slice.shape[1] < num_heads:
-                            # Handle GQA case where we have fewer KV heads than attention heads
-                            num_kv_heads = k_slice.shape[1]
-                            # Each KV head maps to multiple attention heads
-                            for i in range(num_heads):
-                                kv_head_idx = i % num_kv_heads  # Map to corresponding KV head
-                                new_key_states[:, i, pos, :] = k_slice[:, kv_head_idx, 0, :]
-                                new_value_states[:, i, pos, :] = v_slice[:, kv_head_idx, 0, :]
-                        else:
-                            # Mismatch - log error but still try basic assignment
-                            print(f"[KVPatcher Warning] Shape mismatch in layer {layer_idx}: cache has {num_heads} heads, calculated slices have {k_slice.shape[1]} heads")
-                            # Try broadcasting assignment if sizes are compatible
-                            if k_slice.shape[-1] == head_dim:
-                                new_key_states[:, :, pos, :] = k_slice[:, 0, 0, :]
-                                new_value_states[:, :, pos, :] = v_slice[:, 0, 0, :]
-                                
-                        inc_counter("kv_patcher_patches_applied")
+                        # Get the embedding for this token
+                        token_embedding = new_embeds[idx:idx+1]  # Keep batch dimension
+                        
+                        # Calculate K/V vectors using architecture-specific methods
+                        if self.model_type == 'kimi-vl':
+                            k_slice, v_slice = self._calculate_kv_kimi(token_embedding, projections, pos)
+                        elif self.model_type == 'llama':
+                            k_slice, v_slice = self._calculate_kv_llama(token_embedding, projections, pos)
+                        elif self.model_type == 'mistral':
+                            k_slice, v_slice = self._calculate_kv_mistral(token_embedding, projections, pos)
+                        else:  # Generic fallback
+                            k_slice, v_slice = self._calculate_kv_llama(token_embedding, projections, pos)
+                        
+                        # Check if dimensions match
+                        if k_slice.shape[1] != num_heads:
+                            self._debug_log(f"Shape mismatch in layer {layer_idx}: cache has {num_heads} heads, calculated slices have {k_slice.shape[1]} heads")
+                            
+                            # Handle the GQA case for TinyLlama and other models
+                            if k_slice.shape[1] < num_heads and num_heads % k_slice.shape[1] == 0:
+                                # For TinyLlama with GQA: 4 KV heads serving 32 attention heads (8:1 ratio)
+                                repeat_factor = num_heads // k_slice.shape[1]
+                                self._debug_log(f"Expanding {k_slice.shape[1]} KV heads to {num_heads} heads for GQA (repeat {repeat_factor}x)")
+                                k_slice = k_slice.repeat(1, repeat_factor, 1, 1)
+                                v_slice = v_slice.repeat(1, repeat_factor, 1, 1)
+                            # Handle the reverse case where we have more heads than needed
+                            elif k_slice.shape[1] > num_heads:
+                                self._debug_log(f"Trimming from {k_slice.shape[1]} to {num_heads} heads")
+                                k_slice = k_slice[:, :num_heads, :, :]
+                                v_slice = v_slice[:, :num_heads, :, :]
+                        
+                        # Ensure we're targeting just one sequence position
+                        if k_slice.shape[2] != 1:
+                            k_slice = k_slice[:, :, 0:1, :]
+                            v_slice = v_slice[:, :, 0:1, :]
+                            
+                        # Extra debugging for TinyLlama-specific patches
+                        if self.model_type == 'llama' and projections.get('num_kv_heads', 32) == 4:
+                            old_key = new_key_states[0, 0, pos, 0:3].detach().cpu().tolist()  # Sample first few values
+                            new_key = k_slice[0, 0, 0, 0:3].detach().cpu().tolist()
+                            self._debug_log(f"TinyLlama patching pos {pos}: token {new_id} - changing {old_key} to {new_key}")
+                        
+                        # Apply the patch
+                        new_key_states[:, :, pos:pos+1, :] = k_slice
+                        new_value_states[:, :, pos:pos+1, :] = v_slice
+                        inc_counter("kv_patcher_positions_patched")
+                        
                     except Exception as e:
-                        print(f"[KVPatcher Error] Failed to apply patch at position {pos} in layer {layer_idx}: {e}")
-                        inc_counter("kv_patcher_error")
-
+                        print(f"[KVPatcher Error] Failed to patch at position {pos} in layer {layer_idx}: {e}")
+                        inc_counter("kv_patcher_patch_error")
+                
                 # Update the layer tuple in the list
                 new_past_key_values_list[layer_idx] = (new_key_states, new_value_states)
-                
-            # Convert back to tuple
+            
+            # Convert the list back to a tuple
             patched_kv_cache = tuple(new_past_key_values_list)
             print(f"[KVPatcher] Successfully applied {len(diff_list)} patches to KV cache")
             return patched_kv_cache
@@ -595,6 +664,6 @@ class KVCachePatcher:
             import traceback
             print(f"[KVPatcher Error] Failed to apply patches: {type(e).__name__} - {e}")
             print(traceback.format_exc())
+            # Return the original cache as fallback
             inc_counter("kv_patcher_error")
-            # Return the *original* cache if patching fails to avoid corrupting state
             return past_key_values

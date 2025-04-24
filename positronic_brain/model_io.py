@@ -157,7 +157,7 @@ def execute_forward_pass(
             past_key_values=past_key_values,
             position_ids=position_ids,  # Add position_ids parameter
             use_cache=True,
-            output_attentions=True  # Assuming we always want attentions for pruning
+            output_attentions=False  # Disabled - O1 found this breaks KV cache optimizations
         )
 
         logits = outputs.logits

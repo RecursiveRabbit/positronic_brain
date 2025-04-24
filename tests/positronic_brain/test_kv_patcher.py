@@ -480,3 +480,87 @@ class TestKVCachePatcher:
         # Verify that only one change was applied
         # This is harder to test directly, but we can at least verify the patched values are consistent
         # and match what we'd expect for a single update
+        
+    def test_patch_tinyllama_structure(self):
+        """Test patching with TinyLlama architecture using its specific GQA setup."""
+        # Set up a LLaMA-style mock model with TinyLlama specs
+        # TinyLlama-1.1B has 32 attention heads, 4 KV heads, and head_dim=64
+        mock_model = self.setup_mock_model('llama', hidden_size=2048, num_heads=32, num_kv_heads=4, head_dim=64)
+        
+        # Make sure embedding returns a recognizably different tensor for token ID 20
+        # This will ensure that the patched vectors are distinguishable from the original ones
+        embedding_matrix = mock_model.get_input_embeddings()
+        token_20_embedding = torch.ones(2048) * 2.0  # Distinct embedding for token 20
+        with torch.no_grad():
+            embedding_matrix.weight[20, :] = token_20_embedding.clone()
+        
+        # Add input_layernorm to the layer
+        mock_layer = mock_model.model.layers[0]
+        mock_input_layernorm = torch.nn.LayerNorm(2048)
+        mock_layer.input_layernorm = mock_input_layernorm
+        
+        # Set up mock rotary embedding at model level (TinyLlama way)
+        # Remove from attention module
+        if hasattr(mock_layer.self_attn, 'rotary_emb'):
+            delattr(mock_layer.self_attn, 'rotary_emb')
+        
+        # Add to model level with a deterministic transformation function
+        def mock_apply_rope_index(x, position):
+            # Apply a simple position-dependent transformation to make results testable
+            # Just multiply by (position+1) to make it unique and verifiable 
+            return x * (position + 1.0) / 5.0  # More noticeable transformation
+        
+        # Create a proper mock for TinyLlama rotary embedding that performs actual tensor math
+        class MockTinyLlamaRotaryEmbedding:
+            def __init__(self):
+                self.apply_rotary_pos_emb_index = mock_apply_rope_index
+                
+            def __call__(self, x, position_ids=None):
+                # Return cos, sin tuple for TinyLlama's manual RoPE application
+                batch_size, seq_len = position_ids.shape
+                device = x.device
+                head_dim = x.shape[-1]
+                half_dim = head_dim // 2
+                
+                # Create meaningful cos/sin values that will produce a visible transformation
+                cos = torch.ones((batch_size, seq_len, half_dim), device=device)
+                sin = torch.ones((batch_size, seq_len, half_dim), device=device) * 0.5
+                
+                return (cos, sin)
+        
+        # Use the proper mock class instead of a simple MagicMock
+        mock_model.model.rotary_emb = MockTinyLlamaRotaryEmbedding()
+        
+        # Create mock past_key_values tensors
+        # TinyLlama uses 4 KV heads for GQA
+        batch_size = 1
+        seq_len = 10
+        key_tensor = torch.ones((batch_size, 4, seq_len, 64))  # 4 KV heads, head_dim=64
+        value_tensor = torch.ones((batch_size, 4, seq_len, 64))
+        mock_past_key_values = ((key_tensor, value_tensor),)  # Single layer tuple
+        
+        # Create a diff list with a change at position 5
+        diff_list = [(5, 10, 20)]  # (position, old_token, new_token)
+        
+        # Create patcher and apply patch
+        patcher = KVCachePatcher(mock_model)
+        patched_past_kv = patcher.patch(mock_past_key_values, diff_list)
+        
+        # Get the patched key and value tensors
+        patched_key, patched_value = patched_past_kv[0]
+        
+        # Verify structure is preserved
+        assert patched_key.shape == key_tensor.shape, "Key shape changed unexpectedly"
+        assert patched_value.shape == value_tensor.shape, "Value shape changed unexpectedly"
+        
+        # Verify unpatched positions are unchanged
+        assert torch.allclose(patched_key[0, :, 0, :], key_tensor[0, :, 0, :]), "Unpatched key position 0 changed"
+        assert torch.allclose(patched_value[0, :, 0, :], value_tensor[0, :, 0, :]), "Unpatched value position 0 changed"
+        
+        # Verify patched position changed
+        assert not torch.allclose(patched_key[0, :, 5, :], key_tensor[0, :, 5, :]), "Key at position 5 not patched"
+        assert not torch.allclose(patched_value[0, :, 5, :], value_tensor[0, :, 5, :]), "Value at position 5 not patched"
+        
+        # Print debug info for position 5 to help understand the change
+        print(f"Original key at position 5: {key_tensor[0, 0, 5, 0:5]}")
+        print(f"Patched key at position 5: {patched_key[0, 0, 5, 0:5]}")

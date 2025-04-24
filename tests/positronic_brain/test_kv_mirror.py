@@ -94,30 +94,48 @@ class TestKVMirror:
             assert token.instance_id in instance_ids
     
     def test_prune_tokens(self, empty_mirror):
-        """Test pruning tokens from the mirror."""
+        """Test pruning tokens from the mirror using the positions_to_prune approach."""
         mirror = empty_mirror
         
         # Add 10 tokens
+        instance_ids = []
         for i in range(10):
-            mirror.add(i + 100, i)
+            instance_id = mirror.add(i + 100, i)
+            instance_ids.append(instance_id)
             
-        # Create a keep_indices tensor that keeps every other token
-        keep_indices = torch.tensor([0, 2, 4, 6, 8], dtype=torch.long)
+        # Create a list of positions to prune (every odd position)
+        positions_to_prune = [1, 3, 5, 7, 9]
         
         # Apply pruning
-        success = mirror.prune(keep_indices)
+        success = mirror.prune(positions_to_prune)
         assert success
         
-        # Verify only the kept tokens remain active
+        # Verify only the non-pruned tokens remain active
         assert mirror.get_current_size() == 5
         
-        # Verify positions have been reassigned
+        # Verify correct positions remain in the mirror and others are removed
         snapshot = mirror.snapshot()
-        for new_pos, old_pos in enumerate(keep_indices.tolist()):
-            assert new_pos in snapshot['kv_mirror']
+        
+        # These positions should still be in the mirror
+        for pos in [0, 2, 4, 6, 8]:
+            assert pos in snapshot['kv_mirror']
             
-        # Verify registry size includes both active and pruned tokens
+        # These positions should be removed from the mirror
+        for pos in positions_to_prune:
+            assert pos not in snapshot['kv_mirror']
+            
+        # Verify registry still contains all tokens, but pruned ones have updated state
         assert snapshot['registry_size'] == 10
+        
+        # Verify pruned tokens have state='pruned' and position=None
+        for i, instance_id in enumerate(instance_ids):
+            token = snapshot['tokens'][instance_id]
+            if i in positions_to_prune:
+                assert token.state == 'pruned'
+                assert token.position is None
+            else:
+                assert token.state == 'active'
+                assert token.position == i  # Original position preserved
     
     def test_clear(self, empty_mirror):
         """Test clearing all state from the mirror."""
@@ -176,10 +194,10 @@ class TestKVMirror:
     def test_prune_with_empty_mirror(self, empty_mirror):
         """Test pruning an empty mirror."""
         mirror = empty_mirror
-        keep_indices = torch.tensor([], dtype=torch.long)
+        positions_to_prune = [0, 1, 2]  # Positions that don't exist
         
-        success = mirror.prune(keep_indices)
-        assert success
+        success = mirror.prune(positions_to_prune)
+        assert success  # Should succeed but skip non-existent positions
         assert mirror.get_current_size() == 0
     
     def test_prune_all_tokens(self, empty_mirror):
@@ -187,14 +205,16 @@ class TestKVMirror:
         mirror = empty_mirror
         
         # Add 5 tokens
+        instance_ids = []
         for i in range(5):
-            mirror.add(i + 100, i)
-            
-        # Create an empty keep_indices tensor
-        keep_indices = torch.tensor([], dtype=torch.long)
+            instance_id = mirror.add(i + 100, i)
+            instance_ids.append(instance_id)
+        
+        # List all positions to prune
+        positions_to_prune = list(range(5))
         
         # Apply pruning
-        success = mirror.prune(keep_indices)
+        success = mirror.prune(positions_to_prune)
         assert success
         
         # Verify no active tokens remain
@@ -204,6 +224,53 @@ class TestKVMirror:
         snapshot = mirror.snapshot()
         assert snapshot['registry_size'] == 5
         assert snapshot['mirror_size'] == 0
+        
+        # Verify all tokens are marked as pruned
+        for instance_id in instance_ids:
+            token = snapshot['tokens'][instance_id]
+            assert token.state == 'pruned'
+            assert token.position is None
+            
+    def test_prune_does_not_reindex(self, empty_mirror):
+        """Test that pruning does not reindex positions (critical for RoPE consistency)."""
+        mirror = empty_mirror
+        
+        # Add 10 tokens with positions 0-9
+        instance_ids = []
+        for i in range(10):
+            instance_id = mirror.add(i + 100, i)
+            instance_ids.append(instance_id)
+        
+        # Get initial snapshot to verify later
+        initial_snapshot = mirror.snapshot()
+        
+        # Prune positions 1, 3, 5 (odd positions)
+        positions_to_prune = [1, 3, 5]
+        success = mirror.prune(positions_to_prune)
+        assert success
+        
+        # Verify correct number of active tokens
+        assert mirror.get_current_size() == 7  # 10 - 3 = 7
+        
+        # Get post-pruning snapshot
+        post_snapshot = mirror.snapshot()
+        
+        # Verify pruned positions are removed from the mirror
+        for pos in positions_to_prune:
+            assert pos not in post_snapshot['kv_mirror']
+        
+        # Verify kept positions are unchanged and maintain their original indices
+        # This is the critical test for RoPE consistency
+        for pos in [0, 2, 4, 6, 7, 8, 9]:  # All non-pruned positions
+            assert pos in post_snapshot['kv_mirror']
+            
+            # Same instance ID should be at the same position before and after pruning
+            instance_id = post_snapshot['kv_mirror'][pos]
+            assert initial_snapshot['kv_mirror'][pos] == instance_id
+            
+            # Token should still have its original position
+            token = post_snapshot['tokens'][instance_id]
+            assert token.position == pos
     
     def test_add_token_without_position(self, empty_mirror):
         """Test adding a token without a position (e.g., for future 'pruned' registration)."""

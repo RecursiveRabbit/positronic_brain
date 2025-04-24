@@ -5,6 +5,8 @@ Serves a web interface and API for interacting with the AI stream
 
 import asyncio
 import sys
+import os
+import signal
 import uvicorn
 from contextlib import asynccontextmanager  # Import asynccontextmanager
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Request, Depends
@@ -17,27 +19,39 @@ from typing import List, Dict, Any, Optional
 import ai_core
 from api_models import SamplerUpdate, TokenBiasUpdate, TokenBiasPhrase, TokenInfo, TopTokensResponse
 from positronic_brain.metrics import init_metrics_server
+# Import the compactor_task function but will reference it as compactor_task_func in the code
 from positronic_brain.compactor import compactor_task
 
 # Define lifespan context manager
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Code to run on startup
-    global ai_components, inference_task, broadcast_task, compactor_task
+    global ai_components, inference_task, broadcast_task, compactor_task_handle
     print("Application startup...")
     
     # Initialize the Prometheus metrics server
     init_metrics_server(port=9100)
     
-    # Initialize AI components
-    ai_components = await ai_core.setup_ai_core()
+    # Initialize variables that need to be cleaned up in case of failures
+    ai_components = None
+    
+    # Initialize AI components with proper error handling
+    try:
+        ai_components = await ai_core.setup_ai_core()
+    except Exception as e:
+        print(f"Error initializing AI components: {e}", file=sys.stderr)
+        import traceback
+        traceback.print_exc()
+        # We'll yield and then clean up in the finally block
+        yield
+        return  # Exit the context manager after yielding
     
     # Start token broadcaster task
     broadcast_task = asyncio.create_task(broadcast_tokens())
     broadcast_task.add_done_callback(_log_task_result)
     
     # Start the Compactor task if enabled
-    compactor_task = None
+    compactor_task_handle = None
     if hasattr(ai_core.config, 'COMPACTOR_ENABLED') and ai_core.config.COMPACTOR_ENABLED:
         # Get the required components
         kv_mirror_manager = ai_core.kv_mirror_manager
@@ -48,8 +62,10 @@ async def lifespan(app: FastAPI):
         
         if kv_mirror_manager and diffuser_model and pending_diffs_queue and compactor_request_queue and shutdown_event:
             print("Starting Compactor task...")
-            compactor_task = asyncio.create_task(
-                compactor_task(
+            # Use the imported function (compactor_task) to create the asyncio task
+            from positronic_brain.compactor import compactor_task as compactor_task_func
+            compactor_task_handle = asyncio.create_task(
+                compactor_task_func(
                     kv_mirror_manager=kv_mirror_manager,
                     diffuser_model=diffuser_model,
                     pending_diffs_queue=pending_diffs_queue,
@@ -57,7 +73,7 @@ async def lifespan(app: FastAPI):
                     shutdown_event=shutdown_event
                 )
             )
-            compactor_task.add_done_callback(_log_task_result)
+            compactor_task_handle.add_done_callback(_log_task_result)
             print("Compactor task started")
         else:
             print("Cannot start Compactor: missing required components")
@@ -90,33 +106,108 @@ async def lifespan(app: FastAPI):
     inference_task.add_done_callback(_log_task_result)
     print("AI inference task started")
     
-    # Application runs
-    yield
+    # Store task references in app state for shutdown handler
+    app.state.inference_task = inference_task
+    app.state.broadcast_task = broadcast_task
+    app.state.compactor_task_handle = compactor_task_handle
+    app.state.shutdown_event = ai_components["shutdown_event"] if ai_components else None
     
-    # Code to run on shutdown
-    print("Server shutdown initiated - cleaning up tasks...")
+    # Define watchdog timer function to force exit if shutdown takes too long
+    async def _shutdown_watchdog(timeout: float):
+        await asyncio.sleep(timeout)
+        print(f"[Shutdown] Watchdog timer ({timeout}s) expired. Forcing exit.", file=sys.stderr)
+        os._exit(1)  # Force exit, bypassing further cleanup
     
-    if ai_components and ai_components["shutdown_event"]:
-        # Signal the inference task to stop
-        ai_components["shutdown_event"].set()
+    # Define signal handler for forceful exit
+    def _force_exit(signum, frame):
+        print(f"[Shutdown] Signal {signum} received or timeout reached. Forcing exit.", file=sys.stderr)
+        os._exit(1)  # Force exit, bypassing further cleanup
     
-    # Cancel and await all tasks with proper error handling
-    for task_name, task in [("Inference", inference_task), ("Broadcast", broadcast_task), ("Compactor", compactor_task)]:
+    # Function to cancel and wait for tasks with timeout
+    async def _cancel_and_wait(name, task, timeout):
         if task and not task.done():
             try:
-                # Cancel the task
                 task.cancel()
-                # Wait with a timeout
-                await asyncio.wait_for(asyncio.shield(task), timeout=3.0)
-                print(f"{task_name} task shut down cleanly")
-            except asyncio.TimeoutError:
-                print(f"{task_name} task didn't shut down within timeout")
+                await asyncio.wait_for(asyncio.shield(task), timeout=timeout)
+                print(f"[Shutdown] Task '{name}' finished gracefully.")
+                return True
             except asyncio.CancelledError:
-                print(f"{task_name} task cancelled successfully")
+                print(f"[Shutdown] Task '{name}' cancelled successfully.")
+                return True
+            except asyncio.TimeoutError:
+                print(f"[Shutdown Warning] Task '{name}' did not finish within {timeout}s timeout.")
+                return False
             except Exception as e:
-                print(f"Error during {task_name} task shutdown: {e}")
+                print(f"[Shutdown Error] Task '{name}' cleanup error: {e}")
+                return False
+        else:
+            print(f"[Shutdown] Task '{name}' already done.")
+            return True  # Already done is considered success
     
-    print("Server shutdown complete")
+    # Application runs
+    try:
+        yield
+    except Exception as e:
+        print(f"Application error: {e}")
+        import traceback
+        traceback.print_exc()
+        # Fall through to cleanup in finally block
+    finally:
+        # --- Shutdown Sequence ---
+        print("[Shutdown] Initiated...")
+        global_shutdown_timeout = 10.0  # Max seconds allowed for shutdown
+
+        # Start the watchdog timer
+        print(f"[Shutdown] Starting watchdog timer: {global_shutdown_timeout} seconds.")
+        shutdown_timer_task = asyncio.create_task(_shutdown_watchdog(global_shutdown_timeout))
+
+        # Set signal handlers for SIGINT/SIGTERM to force exit if watchdog fails
+        try:
+            signal.signal(signal.SIGINT, _force_exit)
+            signal.signal(signal.SIGTERM, _force_exit)
+        except ValueError:
+            print("[Shutdown Warning] Cannot set signal handlers in this environment (e.g., non-main thread).")
+
+        # 1. Signal tasks to stop - safely handle case where app.state.shutdown_event might be None
+        if hasattr(app.state, 'shutdown_event') and app.state.shutdown_event:
+            print("[Shutdown] Setting shutdown event.")
+            app.state.shutdown_event.set()
+        else:
+            print("[Shutdown Warning] Shutdown event not found.")
+
+        # 2. Attempt brief graceful cleanup for each task
+        tasks_to_await = []
+        if hasattr(app.state, 'inference_task') and app.state.inference_task:
+            tasks_to_await.append(("Inference", app.state.inference_task))
+            
+        if hasattr(app.state, 'broadcast_task') and app.state.broadcast_task:
+            tasks_to_await.append(("Broadcast", app.state.broadcast_task))
+            
+        if hasattr(app.state, 'compactor_task_handle') and app.state.compactor_task_handle:
+            tasks_to_await.append(("Compactor", app.state.compactor_task_handle))
+
+        cleanup_timeout_per_task = 2.0  # Short timeout for each task individually
+        print(f"[Shutdown] Attempting graceful stop for tasks (timeout {cleanup_timeout_per_task}s each)...")
+
+        # Run cancellations concurrently
+        results = await asyncio.gather(*[
+            _cancel_and_wait(name, task, cleanup_timeout_per_task) 
+            for name, task in tasks_to_await
+        ], return_exceptions=True)
+
+        # 3. Cancel the watchdog timer *if* everything finished cleanly AND quickly
+        all_succeeded = all([isinstance(r, bool) and r for r in results])
+        if all_succeeded and shutdown_timer_task and not shutdown_timer_task.done():
+            print("[Shutdown] All tasks finished gracefully. Cancelling watchdog.")
+            shutdown_timer_task.cancel()
+        else:
+            print("[Shutdown] Tasks did not all finish cleanly or watchdog expired. Allowing force exit.")
+            # Do nothing, watchdog or signal handler will force exit.
+            # Keep waiting briefly to allow watchdog to trigger if needed.
+            await asyncio.sleep(1)  # Brief wait before final exit (if watchdog hasn't fired)
+
+        print("[Shutdown] Cleanup attempt finished.")
+        # If we got here, watchdog was cancelled and we can exit normally
 
 
 # Create FastAPI app with lifespan
@@ -138,7 +229,7 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 ai_components = None
 inference_task = None
 broadcast_task = None
-compactor_task = None
+compactor_task_handle = None
 active_connections = set()
 
 # Create a connection manager

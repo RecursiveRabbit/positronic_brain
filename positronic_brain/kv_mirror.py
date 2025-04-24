@@ -97,63 +97,58 @@ class KVMirror:
         return instance_id
 
     @timed_histogram("kv_mirror_prune_seconds")
-    def prune(self, keep_indices: torch.Tensor) -> bool:
+    def prune(self, positions_to_prune: list) -> bool:
         """Atomically apply a pruning operation to the KV mirror and token registry.
         
-        This function takes a tensor of indices to keep and updates both the KV mirror
+        This function takes a list of positions to remove and updates both the KV mirror
         and token registry accordingly. It ensures the entire operation is atomic to
         maintain consistency between the two data structures.
         
+        CRITICAL: Unlike the previous implementation, this "soft mode" pruning does NOT 
+        reindex the remaining tokens. Their original positions in the _pos dictionary are 
+        preserved. This is essential for RoPE (Rotary Position Embedding) consistency, 
+        as RoPE depends on absolute position values.
+        
         Args:
-            keep_indices: Tensor of indices to keep in the KV cache
+            positions_to_prune: List of positions to remove from the KV cache
             
         Returns:
             bool: True if pruning was successful, False otherwise
         """
         try:
-            # Convert keep_indices to Python list
-            keep_list = keep_indices.cpu().tolist()
-            
             with self._lock:
-                # Build the new mirror mapping
-                new_mirror = {}
-                for new_pos, old_pos in enumerate(keep_list):
-                    if old_pos in self._pos:
-                        instance_id = self._pos[old_pos]
-                        new_mirror[new_pos] = instance_id
-                        
-                        # Update position in token registry
-                        if instance_id in self._registry:
-                            self._registry[instance_id].position = new_pos
-                    else:
-                        print(f"[KV Mirror WARNING] Position {old_pos} not found in kv_mirror during pruning")
-                        return False
+                original_size = len(self._pos)  # Size before pruning
+                pruned_count = 0                 # Counter for actually pruned positions
+                skipped_count = 0                # Counter for positions not found
                 
-                # Mark tokens not in new_mirror as pruned
-                for old_pos in self._pos:
-                    instance_id = self._pos[old_pos]
-                    if not any(new_mirror[new_pos] == instance_id for new_pos in new_mirror):
-                        if instance_id in self._registry:
-                            self._registry[instance_id].position = None
-                            self._registry[instance_id].state = 'pruned'
+                # Process each position to prune
+                for pos in positions_to_prune:
+                    # Check if position exists in the mirror
+                    if pos not in self._pos:
+                        print(f"[KV Mirror WARNING] Position {pos} not found during pruning, skipping")
+                        skipped_count += 1
+                        continue
+                    
+                    # Get the instance ID for this position
+                    instance_id = self._pos[pos]
+                    
+                    # Remove from position map
+                    del self._pos[pos]
+                    
+                    # Update registry state
+                    if instance_id in self._registry:
+                        self._registry[instance_id].state = 'pruned'
+                        self._registry[instance_id].position = None
+                    
+                    pruned_count += 1
                 
-                # Replace the mirror with the new mapping
-                self._pos.clear()
-                self._pos.update(new_mirror)
+                # Update metrics
+                set_gauge("kv_mirror_active_tokens", len(self._pos))  # Post-prune active count
+                inc_counter("kv_mirror_tokens_pruned_total", pruned_count)  # Increment by num pruned
                 
-                # Calculate stats for metrics
-                original_size = len(self._pos)  # Current size before pruning
-                num_kept = len(new_mirror)      # Size after pruning
-                num_pruned = original_size - num_kept  # Actual number pruned
-                
-                # Update metrics (after state update)
-                set_gauge("kv_mirror_active_tokens", num_kept)  # Post-prune active count
-                inc_counter("kv_mirror_tokens_pruned_total", num_pruned)  # Increment by num pruned
-                
-                # Verify integrity
-                if len(keep_list) != len(self._pos):
-                    print(f"[KV Mirror WARNING] Size mismatch after pruning: expected {len(keep_list)}, got {len(self._pos)}")
-                    return False
+                # Log summary
+                if skipped_count > 0:
+                    print(f"[KV Mirror INFO] Pruned {pruned_count} positions, skipped {skipped_count} non-existent positions")
                 
                 return True
         except Exception as e:
