@@ -118,8 +118,9 @@ def execute_forward_pass(
     model: AutoModelForCausalLM,
     input_ids: torch.Tensor,
     attention_mask: torch.Tensor,
-    past_key_values: Optional[Tuple] = None
-) -> Tuple[torch.Tensor, Optional[Tuple], Optional[Tuple]]:  # logits, new_kv_cache, attentions
+    past_key_values: Optional[Tuple] = None,
+    position_ids: Optional[torch.Tensor] = None
+) -> Tuple[torch.Tensor, Optional[Tuple], Any]:  # logits, new_kv_cache, attentions
     """
     Executes a forward pass through the model.
 
@@ -128,25 +129,28 @@ def execute_forward_pass(
         input_ids: The input token IDs for this pass.
         attention_mask: The attention mask for this pass.
         past_key_values: The KV cache from the previous step, if any.
+        position_ids: Optional tensor containing the position IDs for the input tokens.
 
     Returns:
         A tuple containing:
         - logits: Raw output logits from the model.
         - new_past_key_values: The updated KV cache.
-        - attentions: Attention weights (if model configured).
+        - attentions: Attention weights (or None).
     """
     try:
         outputs = model(
             input_ids=input_ids,
             attention_mask=attention_mask,
             past_key_values=past_key_values,
+            position_ids=position_ids,  # Add position_ids parameter
             use_cache=True,
             output_attentions=True  # Assuming we always want attentions for pruning
         )
 
         logits = outputs.logits
         new_kv_cache = outputs.past_key_values
-        attentions = outputs.attentions if hasattr(outputs, 'attentions') else None
+        # Use getattr for safer access to optional attributes like attentions
+        attentions = getattr(outputs, 'attentions', None)
 
         return logits, new_kv_cache, attentions
 
