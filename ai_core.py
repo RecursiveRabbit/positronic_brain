@@ -118,7 +118,7 @@ async def get_context_info_kv_mirror(processor=None, shared_state=None):
                     input_ids_cpu = shared_state['current_input_ids_cpu']
                     local_processor = shared_state['processor']
                     # Decode the entire input_ids tensor to get chronological text
-                    chronological_text = local_processor.tokenizer.decode(input_ids_cpu[0])
+                    chronological_text = local_processor.decode(input_ids_cpu[0])
                     print(f"[Context] Successfully decoded chronological context, length: {len(chronological_text)} chars")
         except Exception as e:
             print(f"[Context] Error decoding chronological context: {e}")
@@ -127,7 +127,7 @@ async def get_context_info_kv_mirror(processor=None, shared_state=None):
     # Decode token IDs if processor is provided
     if processor:
         for pos, token_id in position_to_token_id.items():
-            decoded_tokens[pos] = processor.tokenizer.decode([token_id])
+            decoded_tokens[pos] = processor.decode([token_id])
         
         # Create formatted string (index: token)
         formatted_map = "\n".join([f"{pos}: {decoded_tokens[pos]}" for pos in sorted(decoded_tokens.keys())])
@@ -565,7 +565,7 @@ async def _generate_next_token(
             for token_info in top_token_data_for_ui:
                 token_id = token_info['token_id']
                 try:
-                    decoded_token = processor.tokenizer.decode([token_id])
+                    decoded_token = processor.decode([token_id])
                     processed_top_tokens.append({
                         'token': decoded_token,
                         'token_id': token_id,
@@ -583,7 +583,7 @@ async def _generate_next_token(
         generated_token_id = selected_token_id
         
         # --- Step 3: Decode Token ---
-        next_token_text = processor.tokenizer.decode([generated_token_id])
+        next_token_text = processor.decode([generated_token_id])
         
         # Create a tensor version for adding to input_ids later
         next_token = torch.tensor([[generated_token_id]], device=input_ids.device) # Match device
@@ -797,8 +797,8 @@ async def run_continuous_inference(model, processor, controller, initial_prompt_
         im_end_token_id = None
         try:
             # Try to get the token ID for 
-            im_end_token_id = processor.tokenizer.convert_tokens_to_ids("")
-            if im_end_token_id == processor.tokenizer.unk_token_id:
+            im_end_token_id = processor.convert_tokens_to_ids("")
+            if im_end_token_id == processor.unk_token_id:
                 im_end_token_id = None
                 print("[Token Lookup]  token not found in vocabulary, falling back to eos_token")
             else:
@@ -807,15 +807,15 @@ async def run_continuous_inference(model, processor, controller, initial_prompt_
             print("[Token Lookup] Error looking up  token, falling back to eos_token")
         
         # Get standard EOS token ID
-        eos_token_id = processor.tokenizer.eos_token_id
+        eos_token_id = processor.eos_token_id
         print(f"[Token Lookup] Using eos_token_id: {eos_token_id}")
         
         # Try to find pause token if model supports it
         im_stop_token_id = None
         try:
             # Try to get the token ID for <|im_stop|>
-            im_stop_token_id = processor.tokenizer.convert_tokens_to_ids("<|im_stop|>")
-            if im_stop_token_id == processor.tokenizer.unk_token_id:
+            im_stop_token_id = processor.convert_tokens_to_ids("<|im_stop|>")
+            if im_stop_token_id == processor.unk_token_id:
                 im_stop_token_id = None
                 print("[Token Lookup] <|im_stop|> token not found in vocabulary")
             else:
@@ -835,7 +835,7 @@ async def run_continuous_inference(model, processor, controller, initial_prompt_
         print(f"[Token Lookup] Stop tokens: {stop_tokens}, Pause tokens: {pause_tokens}")
     except Exception as e:
         print(f"[Token Lookup] Error setting up token detection: {e}")
-        stop_tokens = {processor.tokenizer.eos_token_id}
+        stop_tokens = {processor.eos_token_id}
         pause_tokens = set()
     try:
         conf = model.config
@@ -866,7 +866,7 @@ async def run_continuous_inference(model, processor, controller, initial_prompt_
                                 "<|assistant|>" in initial_prompt_content):
         print("[Startup] Detected pre-formatted resume context. Tokenizing directly.")
         # Tokenize the loaded text directly, assuming it's already formatted
-        prompt_inputs = processor.tokenizer(
+        prompt_inputs = processor(
             initial_prompt_content,
             return_tensors="pt",
             add_special_tokens=False  # Don't add BOS/EOS again
@@ -886,7 +886,7 @@ async def run_continuous_inference(model, processor, controller, initial_prompt_
         ]
         
         # Get the formatted text string first
-        prompt_text_formatted = processor.tokenizer.apply_chat_template(
+        prompt_text_formatted = processor.apply_chat_template(
             messages, add_generation_prompt=True, tokenize=False
         )
         
@@ -1042,7 +1042,7 @@ async def run_continuous_inference(model, processor, controller, initial_prompt_
                     if current_processor is not None:
                         # Decode the current state of input_ids
                         # Use a CPU copy to avoid potential issues with ongoing GPU operations
-                        context_to_save_text = current_processor.tokenizer.decode(
+                        context_to_save_text = current_processor.decode(
                             input_ids.detach().clone().cpu()[0],
                             skip_special_tokens=False  # Save potentially important special tokens too
                         )
@@ -1171,7 +1171,7 @@ async def setup_ai_core(initial_prompt="The simulation awakens. A stream of cons
     initial_input_ids, initial_attention_mask = None, None
     
     # Create controller
-    controller = SimpleContextController(processor.tokenizer)
+    controller = SimpleContextController(processor)
     
     # Create communication channels
     output_queue = asyncio.Queue()

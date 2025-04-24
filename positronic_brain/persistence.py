@@ -9,7 +9,7 @@ def save_context(input_ids, processor, file_path="context_history.txt"):
     """Save the current context to a text file"""
     try:
         # Decode current context
-        context_text = processor.tokenizer.decode(input_ids[0], skip_special_tokens=False)
+        context_text = processor.decode(input_ids[0], skip_special_tokens=False)
         # Save context to file
         with open(file_path, "w", encoding="utf-8") as f:
             f.write(context_text)
@@ -33,7 +33,7 @@ def load_context(processor, context_window_target, file_path="context_history.tx
         print(f"[Persistence] Loaded context from {file_path}")
         
         # Re-tokenize the saved text
-        re_tokenized = processor.tokenizer(
+        re_tokenized = processor(
             loaded_text,
             return_tensors="pt",
             max_length=context_window_target,  # Use context_window_target consistently

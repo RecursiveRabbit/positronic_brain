@@ -6,7 +6,7 @@ and managing model cache operations.
 
 import torch
 from typing import Optional, Tuple, Dict, Any, Union
-from transformers import AutoModelForCausalLM, AutoProcessor
+from transformers import AutoModelForCausalLM, AutoProcessor, AutoTokenizer
 from .metrics import timed_histogram
 
 
@@ -29,10 +29,23 @@ def load_model(model_name: str, trust_remote_code: bool):
     torch.backends.cudnn.benchmark_limit = 4
     print("[Optimizations] TF32 and cuDNN benchmark enabled in load_model.")
     print("Loading processor...")
-    processor = AutoProcessor.from_pretrained(model_name, trust_remote_code=trust_remote_code)
-    if processor.tokenizer.pad_token is None:
-        processor.tokenizer.pad_token = processor.tokenizer.eos_token
-        print(f"Set tokenizer pad_token to eos_token ({processor.tokenizer.eos_token})")
+    # Use AutoTokenizer directly for pure text models like TinyLlama
+    processor = AutoTokenizer.from_pretrained(model_name, trust_remote_code=trust_remote_code)
+    print(f"Loaded processor type: {type(processor)}")
+    
+    # Access attributes directly on the processor/tokenizer object
+    if processor.pad_token is None:
+        if processor.eos_token is not None:
+            processor.pad_token = processor.eos_token
+            print(f"Set processor pad_token to eos_token ({processor.eos_token})")
+        else:
+            # Add a fallback if EOS is also missing
+            processor.add_special_tokens({'pad_token': '[PAD]'})
+            print(f"Added new pad_token: {processor.pad_token}")
+    
+    # Ensure pad_token_id is set if pad_token exists
+    if processor.pad_token is not None and processor.pad_token_id is None:
+        processor.pad_token_id = processor.convert_tokens_to_ids(processor.pad_token)
 
     print("Loading model...")
     model = AutoModelForCausalLM.from_pretrained(
