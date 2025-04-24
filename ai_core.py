@@ -433,9 +433,12 @@ async def _generate_next_token(
             # First, get the device of the first cache tensor to ensure proper device placement
             target_device = past_key_values[0][0].device
             
-            # FIXED: Use only the last token's attention mask slice, not a full mask
-            # This ensures proper position_ids inference
-            current_attention_mask_for_call = attention_mask[:, -1:]
+            # TEST: Use full attention mask with explicit position_ids
+            # Create full length mask for all tokens (current + cached)
+            target_device = past_key_values[0][0].device
+            cache_seq_len = past_key_values[0][0].shape[2]
+            total_seq_len = model_input_ids.shape[1] + cache_seq_len # model_input_ids is just the last token here
+            current_attention_mask_for_call = torch.ones(1, total_seq_len, device=target_device, dtype=attention_mask.dtype)
             
             # FIXED: Explicitly create position_ids to ensure correct positioning with KV cache
             # This is critical for RoPE to work correctly
