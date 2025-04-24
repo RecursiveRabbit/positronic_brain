@@ -8,9 +8,9 @@ from typing import Optional, Dict
 import torch  # For device check
 
 # --- Model Configuration ---
-MODEL_NAME = "moonshotai/Kimi-VL-A3B-Thinking"
+MODEL_NAME = "TinyLlama/TinyLlama-1.1B-intermediate-step-1431k-3T"
 DIFFUSER_MODEL_NAME = "distilbert-base-uncased"  # Model used for token repair in the Compactor
-TRUST_REMOTE_CODE = True
+TRUST_REMOTE_CODE = False  # TinyLlama doesn't need remote code
 
 # --- Device Configuration ---
 GPU_DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
