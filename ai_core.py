@@ -35,7 +35,7 @@ import copy
 from dataclasses import field
 from typing import Dict, Optional, Set
 from positronic_brain.kv_mirror import KVMirror
-from positronic_brain.pruning import calculate_biased_attention_pruning_indices
+# Pruning module removed - switching to brightness/compactor approach
 from transformers import AutoModelForCausalLM, AutoProcessor
 from positronic_brain.sampler import top_p_filter, top_k_filter, apply_repetition_penalty
 
@@ -294,113 +294,49 @@ async def _handle_context_update(
         input_ids = torch.cat([input_ids, update_tokens], dim=1) 
         attention_mask = current_attention_mask_for_call  # Still update the full mask for state tracking
         
-        # Apply attention-based KV cache management for injected context too
+        # Context management for injected tokens - using the Compactor/Brightness approach
+        # The KV Mirror state is already updated above with the new tokens
+        # For now, we'll just perform basic logging and continue without pruning
         if llm_output_past_key_values is not None:
             # Get the current cache length
             current_cache_len = llm_output_past_key_values[0][0].shape[2]
             
-            # Check if we've exceeded the fixed context window size
-            if current_cache_len > config.CONTEXT_WINDOW_TARGET:
-                try:
-                    # Store last injected token ID for token map updates
-                    last_injected_token_id = update_tokens[0, -1].item() if update_tokens.shape[1] > 0 else -1
-                    
-                    # Production log for monitoring context injection pruning
-                    if current_cache_len > config.CONTEXT_WINDOW_TARGET + 1:
-                        print(f"[Context Injection] Processing overflow: {current_cache_len} tokens (limit: {config.CONTEXT_WINDOW_TARGET})", file=sys.stderr)
-                    else:
-                        print(f"[Context Injection] Processing standard injection: {current_cache_len} tokens", file=sys.stderr)
-                        
-                    # Calculate indices to keep using the dedicated pruning function
-                    target_device = llm_output_past_key_values[0][0].device  # Get device from first tensor
-                    keep_indices = calculate_biased_attention_pruning_indices(
-                        current_cache_len=current_cache_len,
-                        kv_mirror_manager=kv_mirror_manager,
-                        outputs=outputs,
-                        device=target_device
-                    )
-                    
-                    # If no indices were returned (e.g., pruning not needed or calculation failed)
-                    if keep_indices is None:
-                        print(f"[Context Injection] No pruning needed or pruning calculation failed.")
-                        # Just use the unpruned cache
-                        keep_indices = torch.arange(current_cache_len, device=target_device)
-                    
-                    # Retain this essential check to ensure correct pruning
-                    print(f"[Context Injection] Final indices shape: {keep_indices.shape}", file=sys.stderr)
-                    
-                    # Process each layer of the KV cache with these indices
-                    processed_past_key_values = []
-                    try:
-                        # --- KV Mirror Update for Pruning ---
-                        # CRITICAL: Capture input_ids before pruning for KV Mirror state synchronization
-                        input_ids_before_pruning = input_ids[0].clone().cpu()
-                        
-                        # Apply pruning to the KV mirror atomically using the new function
-                        pruning_success = kv_mirror_manager.prune(keep_indices)
-                        
-                        if not pruning_success:
-                            raise RuntimeError("KV mirror state update failed during injection pruning")
-                        
-                        # Get statistics for logging
-                        stats = kv_mirror_manager.get_stats()
-                        active_tokens = stats['active_tokens']
-                        total_tracked = stats['total_tokens']
-                        pruned_tokens = total_tracked - active_tokens
-                        
-                        print(f"[KV Mirror] After pruning: {active_tokens} active, {pruned_tokens} newly pruned, {total_tracked} total tracked")
-                        
-                        # Update the shared state for UI if needed
-                        if shared_state is not None:
-                            async with shared_state['lock']:
-                                shared_state['kv_mirror_stats'] = {
-                                    'active': active_tokens,
-                                    'pruned': pruned_tokens,
-                                    'total': total_tracked,
-                                    'timestamp': time.time()
-                                }
-                        
-                        # --- KV Cache Tensor Pruning (unchanged) ---
-                        for layer_past in llm_output_past_key_values:
-                            new_layer_past = []
-                            for past_tensor in layer_past:
-                                # Get the device of the current tensor
-                                current_past_tensor_device = past_tensor.device
-                                
-                                # Move the indices to the device of the tensor being indexed
-                                keep_indices_for_kv = keep_indices.to(current_past_tensor_device)
-                                
-                                # Select the desired positions from the tensor
-                                selected = torch.index_select(past_tensor, 2, keep_indices_for_kv)
-                                new_layer_past.append(selected)
-                            processed_past_key_values.append(tuple(new_layer_past))
-                        
-                        # Update the KV cache with our pruned version
-                        past_key_values = tuple(processed_past_key_values)
-                    except Exception as e:
-                        print(f"[Attention Cache - Injection] Error in attention-based pruning: {type(e).__name__}: {str(e)}")
-                        # Never truncate or use FIFO-based pruning! Let context grow on failure.
-                        # Core design philosophy is to never do simple truncation.
-                        if llm_output_past_key_values is not None:
-                            past_key_values = llm_output_past_key_values  # Keep the original KV cache
-                        print(f"[Attention Cache - Injection] Pruning failed, allowing context to grow to {input_ids.shape[1]} tokens. This is expected behavior.")
-                except Exception as outer_e:
-                    print(f"[Context Injection] Outer pruning error: {type(outer_e).__name__}: {str(outer_e)}")
-                    # If the outer try block fails, still use the original KV cache
-                    past_key_values = llm_output_past_key_values
+            # Log information about context size
+            print(f"[Context Injection] Current context length: {current_cache_len} tokens", file=sys.stderr)
             
-            else:
-                # Cache hasn't reached config.CONTEXT_WINDOW_TARGET yet, just use it as is
-                past_key_values = llm_output_past_key_values
-                # Add the new token to the token map at the appropriate position
-                # The position is the current cache length - 1
-                current_cache_len = past_key_values[0][0].shape[2]  # Cache sequence length after addition
-                if current_cache_len <= config.CONTEXT_WINDOW_TARGET:
-                    # Place the token at the correct position (current_cache_len-1) 
-                    # since we count from 0 and the newest token is at the end
-                    position = current_cache_len - 1
-                    # The token has already been registered above via register_token
-                    # No further updates needed here
+            # Initialize brightness scores for newly added tokens
+            # This ensures they get tracked by the brightness system
+            for i in range(update_tokens.shape[1]):
+                # Get the position in the overall context
+                token_pos = current_cache_len - update_tokens.shape[1] + i
+                try:
+                    # Set initial brightness for new tokens
+                    # We use a neutral initial value since we don't have attention scores yet
+                    kv_mirror_manager.set_token_brightness(token_pos, config.INITIAL_TOKEN_BRIGHTNESS)
+                    # Token brightness will be properly updated in _generate_next_token after the next forward pass
+                except Exception as e:
+                    print(f"[Brightness] Failed to initialize brightness for token at position {token_pos}: {e}", file=sys.stderr)
+            
+            # Get statistics for logging
+            stats = kv_mirror_manager.get_stats()
+            active_tokens = stats['active_tokens']
+            total_tracked = stats['total_tokens']
+            
+            print(f"[KV Mirror] After injection: {active_tokens} active tokens, {total_tracked} total tracked")
+            
+            # Update the shared state for UI if needed
+            if shared_state is not None:
+                async with shared_state['lock']:
+                    shared_state['kv_mirror_stats'] = {
+                        'active': active_tokens,
+                        'total': total_tracked,
+                        'timestamp': time.time()
+                    }
+            
+            # Simply use the past_key_values directly - no pruning/manipulation needed
+            past_key_values = llm_output_past_key_values
+            # The tokens have already been registered above via register_token
+            # No further updates needed here
         else:
             past_key_values = llm_output_past_key_values
         
@@ -442,9 +378,9 @@ async def _generate_next_token(
     Returns updated input_ids, attention_mask, past_key_values.
     """
     try:
-        # Optimize GPU memory using move_cache_to_device
-        if config.OFFLOAD_KV_CACHE_TO_CPU and past_key_values is not None:
-            past_key_values = move_cache_to_device(past_key_values, model.device)
+        # DISABLED: Optimize GPU memory using move_cache_to_device
+        # if config.OFFLOAD_KV_CACHE_TO_CPU and past_key_values is not None:
+        #     past_key_values = move_cache_to_device(past_key_values, model.device)
 
         # Prepare inputs for standard token generation
         if past_key_values is None:
@@ -552,76 +488,8 @@ async def _generate_next_token(
             outputs = type('ModelOutputs', (), {})()
             outputs.attentions = outputs_attentions
             
-            # Brightness update integration - calculate brightness scores based on attention patterns
-            try:
-                if outputs.attentions is not None:
-                    updated_tokens = update_brightness_scores(
-                        kv_mirror_manager,
-                        outputs,
-                        config.BRIGHTNESS_ALPHA,
-                        config.BRIGHTNESS_BETA
-                    )
-                    if updated_tokens:
-                        print(f"[Brightness] Updated {len(updated_tokens)} token brightness scores")
-                        
-                        # TODO: Move token repair to an asynchronous Compactor task
-                        # The current synchronous implementation within _generate_next_token is temporary
-                        # and should be refactored into a background process that doesn't block generation
-                        
-                        # Token repair using diffuser model - only if diffuser_model is initialized
-                        global diffuser_model
-                        if diffuser_model is not None:
-                            # Get tokens with brightness below threshold
-                            snapshot = kv_mirror_manager.snapshot()
-                            tokens = snapshot['tokens']
-                            mirror = snapshot['kv_mirror']
-                            
-                            # Find low-brightness tokens and their positions
-                            low_brightness_positions = []
-                            token_ids = []
-                            
-                            for pos, instance_id in mirror.items():
-                                if instance_id in tokens:
-                                    token = tokens[instance_id]
-                                    token_ids.append(token.token_id)
-                                    if token.brightness < config.BRIGHTNESS_REPAIR_THRESHOLD:
-                                        low_brightness_positions.append(pos)
-                            
-                            # Limit number of repairs per step
-                            if len(low_brightness_positions) > config.MAX_REPAIR_TOKENS_PER_STEP:
-                                low_brightness_positions = low_brightness_positions[:config.MAX_REPAIR_TOKENS_PER_STEP]
-                            
-                            if low_brightness_positions and len(token_ids) > 0:
-                                # Get model hidden states for repair
-                                if hasattr(outputs, 'hidden_states') and outputs.hidden_states is not None:
-                                    hidden_states = outputs.hidden_states[-1]  # Use last layer hidden states
-                                    
-                                    # Get repaired tokens
-                                    repairs = get_repaired_tokens(
-                                        diffuser_model,
-                                        hidden_states,
-                                        attention_mask,
-                                        token_ids,
-                                        low_brightness_positions
-                                    )
-                                    
-                                    if repairs:
-                                        # Apply the repairs to the KV mirror
-                                        repair_diff = [(pos, new_id) for pos, _, new_id in repairs]
-                                        kv_mirror_manager.apply_diff(repair_diff)
-                                        print(f"[Diffuser] Repaired {len(repairs)} low-brightness tokens")
-
-                                        # TODO: Update the model's past_key_values tensor
-                                        # Currently, only the KV Mirror records are updated, but the actual model state
-                                        # isn't modified. This requires embedding the new tokens and patching the
-                                        # corresponding positions in past_key_values to maintain consistency.
-                                        
-                                        # Log the repairs
-                                        for pos, old_id, new_id in repairs:
-                                            print(f"[Diffuser] Pos {pos}: {old_id} → {new_id}")
-            except Exception as e:
-                inc_counter("brightness_update_error")
-                print(f"[Brightness Engine ERROR] {str(e)}")
+            # DISABLED: Brightness update integration and token repair
+            # print("Brightness updates and token repair disabled for testing")
                 
             outputs.past_key_values = llm_output_past_key_values
             outputs.logits = logits
@@ -630,9 +498,9 @@ async def _generate_next_token(
             raise model_e
 
         
-        # Move KV cache to CPU if configured (helps with VRAM management)
-        if config.OFFLOAD_KV_CACHE_TO_CPU and past_key_values is not None:
-            past_key_values = move_cache_to_device(past_key_values, config.CPU_DEVICE)
+        # DISABLED: Move KV cache to CPU if configured (helps with VRAM management)
+        # if config.OFFLOAD_KV_CACHE_TO_CPU and past_key_values is not None:
+        #     past_key_values = move_cache_to_device(past_key_values, config.CPU_DEVICE)
 
         # --- Step 2: Select Next Token (Sampling) using external function ---
         # Call the dedicated sampling function
@@ -709,6 +577,14 @@ async def _generate_next_token(
             token_attention = torch.ones((1, 1), device=attention_mask.device)
             attention_mask = torch.cat([attention_mask, token_attention], dim=1)
             
+            # Initialize shared state variables if they don't exist
+            if shared_state is not None:
+                async with shared_state['lock']:
+                    if 'context_buffer' not in shared_state:
+                        shared_state['context_buffer'] = []
+                    if 'token_frequency' not in shared_state:
+                        shared_state['token_frequency'] = {}
+                    
             # Register the new token in the KV Mirror structure
             new_position = kv_mirror_manager.get_current_size()  # This will be its position after appending
             
@@ -720,123 +596,71 @@ async def _generate_next_token(
                 removal_bias=0.0  # Default bias, could be customized based on token importance
             )
             
-            # KV Mirror now tracks tokens internally - no need for global token_map
-            
-            # Record the generated token in the KV Mirror
-            kv_mirror_manager.register_token(generated_token_id)
-            
             # Update shared state if present
             if shared_state is not None:
                 async with shared_state['lock']:
                     shared_state['input_len'] = input_ids.shape[1]
                     shared_state['last_token'] = generated_token_id
             
-            # Add to the context buffer (for prompt reconstruction later if needed)
-            context_buffer.append(next_token_text)
-            
-            # Track token info for downstream use
-            if generated_token_id not in token_frequency:
-                token_frequency[generated_token_id] = 0
-            token_frequency[generated_token_id] += 1
+            # Add to the context buffer in shared state (for prompt reconstruction later if needed)
+            if shared_state is not None and 'context_buffer' in shared_state:
+                async with shared_state['lock']:
+                    shared_state['context_buffer'].append(next_token_text)
+                    
+            # Track token info for downstream use in shared state
+            if shared_state is not None and 'token_frequency' in shared_state:
+                async with shared_state['lock']:
+                    if generated_token_id not in shared_state['token_frequency']:
+                        shared_state['token_frequency'][generated_token_id] = 0
+                    shared_state['token_frequency'][generated_token_id] += 1
             
             # Queue the output token for display
             await output_queue.put(next_token_text)
         
-        # Apply pruning if needed
-        if past_key_values is not None and input_ids.shape[1] > config.CONTEXT_WINDOW_TARGET:
-            # This path is handled by attention-based pruning
-            # Get the current KV cache sequence length
-            current_cache_len = past_key_values[0][0].shape[2]
-            
-            # Apply pruning if we've exceeded the window size
-            if current_cache_len > config.CONTEXT_WINDOW_TARGET:
-                print(f"[Context] Running attention-based pruning with {current_cache_len} tokens (target: {config.CONTEXT_WINDOW_TARGET})")
-                
-                try:
-                    # Calculate indices to keep using the pruning function
-                    target_device = past_key_values[0][0].device  # Get device from first tensor
-                    keep_indices = calculate_biased_attention_pruning_indices(
-                        current_cache_len=current_cache_len,
-                        kv_mirror_manager=kv_mirror_manager,
-                        outputs=outputs,
-                        device=target_device
-                    )
-                    
-                    # If no indices were returned (pruning calculation failed)
-                    if keep_indices is None:
-                        print(f"[Context] No pruning needed or pruning calculation failed.")
-                        # Just use the unpruned cache
-                        keep_indices = torch.arange(current_cache_len, device=target_device)
-                    
-                    # --- KV Mirror Update for Pruning ---
-                    # First, capture input_ids_before_pruning for KV Mirror state
-                    input_ids_before_pruning = input_ids[0].clone().cpu()
-                    
-                    # Apply pruning to the KV mirror atomically
-                    pruning_success = kv_mirror_manager.prune(keep_indices)
-                    
-                    if not pruning_success:
-                        raise RuntimeError("KV mirror state update failed during pruning")
-                    
-                    # Get statistics for logging
-                    stats = kv_mirror_manager.get_stats()
-                    active_tokens = stats['active_tokens']
-                    total_tracked = stats['total_tokens']
-                    pruned_tokens = total_tracked - active_tokens
-                    
-                    print(f"[KV Mirror] After pruning: {active_tokens} active, {pruned_tokens} newly pruned, {total_tracked} total tracked")
-                    
-                    # Update the shared state for UI if needed
-                    if shared_state is not None:
-                        async with shared_state['lock']:
-                            shared_state['kv_mirror_stats'] = {
-                                'active': active_tokens,
-                                'pruned': pruned_tokens,
-                                'total': total_tracked,
-                                'timestamp': time.time()
-                            }
-                    
-                    # --- KV Cache Tensor Pruning ---
-                    processed_past_key_values = []
-                    for layer_past in past_key_values:
-                        new_layer_past = []
-                        for past_tensor in layer_past:
-                            # Get the device of the current tensor
-                            current_past_tensor_device = past_tensor.device
-                            
-                            # Move the indices to the device of the tensor being indexed
-                            keep_indices_for_kv = keep_indices.to(current_past_tensor_device)
-                            
-                            # Select the desired positions from the tensor
-                            selected = torch.index_select(past_tensor, 2, keep_indices_for_kv)
-                            new_layer_past.append(selected)
-                        processed_past_key_values.append(tuple(new_layer_past))
-                    
-                    # Update the KV cache with our pruned version
-                    past_key_values = tuple(processed_past_key_values)
-                    
-                    # Use the same indices for input_ids/attention_mask that we used for the KV cache
-                    target_device_for_inputs = input_ids.device
-                    keep_indices_for_inputs = keep_indices.to(target_device_for_inputs)
-                    
-                    # Prune using the device-matched indices for synchronized pruning
-                    input_ids = input_ids[:, keep_indices_for_inputs]
-                    attention_mask = attention_mask[:, keep_indices_for_inputs]
-                    
-                    # KV Mirror pruning has already synchronized the state
-                    print(f"[KV Mirror] Pruning state synchronized during generation", file=sys.stderr)
+        if shared_state is not None and 'token_frequency' in shared_state:
+            async with shared_state['lock']:
+                if generated_token_id not in shared_state['token_frequency']:
+                    shared_state['token_frequency'][generated_token_id] = 0
+                shared_state['token_frequency'][generated_token_id] += 1
+        # Re-enable brightness updates - critical for Compactor approach
+        if kv_mirror_manager is not None and not skip_iteration:
+            brightness_scores = update_brightness_scores(
+                kv_mirror_manager=kv_mirror_manager,
+                outputs=outputs,
+                alpha=config.BRIGHTNESS_ALPHA,
+                beta=config.BRIGHTNESS_BETA
+            )
+            print(f"[Brightness] Updated scores for token index {input_ids.shape[1]-1}", file=sys.stderr)
 
-                    if shared_state is not None:
-                        # KV Mirror state already synchronized
-                        pass
-                except Exception as e:
-                    print(f"[Attention Cache] Error in attention-based pruning: {type(e).__name__}: {str(e)}")
-                    # Never truncate or use FIFO-based pruning! Let context grow on failure.
-                    # Core design philosophy is to never do simple truncation.
-                    print(f"[Attention Cache] Pruning failed, allowing context to grow to {input_ids.shape[1]} tokens. This is expected behavior.")
-            else:
-                # Cache hasn't reached context window target yet, just use it as is
-                pass
+        # Process diffs from Compactor (if any)
+        if past_key_values is not None and pending_diffs_queue is not None:
+            diffs_to_apply = []
+            try:
+                while not pending_diffs_queue.empty():
+                    try:
+                        # Get all currently available diffs without blocking indefinitely
+                        diff_item = pending_diffs_queue.get_nowait()
+                        diffs_to_apply.append(diff_item)
+                        pending_diffs_queue.task_done()  # Mark task done for queue management
+                    except asyncio.QueueEmpty:
+                        break  # No more items currently available
+            
+                # Apply diffs to the KV Mirror and KV cache
+                if diffs_to_apply:
+                    print(f"[Compactor] Applying {len(diffs_to_apply)} diffs from Compactor", file=sys.stderr)
+                    try:
+                        # First update the KV Mirror canonical state
+                        update_summary = kv_mirror_manager.apply_diff(diffs_to_apply)
+                        print(f"[KVMirror] Applied diffs: {update_summary}", file=sys.stderr)
+                    
+                        # Then patch the actual KV cache tensors
+                        if past_key_values is not None:
+                            past_key_values = kv_patcher.patch(past_key_values, diffs_to_apply)
+                            print(f"[KVPatcher] KV cache patched successfully", file=sys.stderr)
+                    except Exception as e:
+                        print(f"[Error] Failed applying compactor diffs: {e}", file=sys.stderr)
+            except Exception as e:
+                print(f"[Error] Exception checking compactor queue: {e}", file=sys.stderr)
                 
         return input_ids, attention_mask, past_key_values
     except Exception as e:
@@ -882,30 +706,36 @@ async def run_continuous_inference(model, processor, controller, initial_prompt_
         async with shared_state['lock']:
             shared_state['resume_generation_event'] = resume_generation_event
     
-    # Initialize KV Mirror for tracking token context
+    # Initialize KV Mirror for tracking token context if not already initialized
     global kv_mirror_manager
-    print(f"[KVMirror] Initializing KV Mirror...")
-    kv_mirror_manager = KVMirror(max_positions=2048)
-    print(f"[KVMirror] Initialized successfully")
+    if kv_mirror_manager is None:
+        print(f"[KVMirror] Initializing KV Mirror...")
+        kv_mirror_manager = KVMirror()
+        print(f"[KVMirror] Initialized successfully")
+    else:
+        # Clear the KV Mirror to reset state
+        kv_mirror_manager.clear()
     
-    # Initialize the diffuser model for token repair
+    # Initialize the diffuser model for token repair if not already initialized
     global diffuser_model
-    try:
-        print(f"[Diffuser] Loading diffuser model {config.DIFFUSER_MODEL_NAME}...")
-        diffuser_model = DiffuserModel(model_name=config.DIFFUSER_MODEL_NAME)
-        print(f"[Diffuser] Model loaded successfully")
-    except Exception as e:
-        print(f"[Diffuser] Error loading diffuser model: {e}")
-        diffuser_model = None
+    if diffuser_model is None:
+        try:
+            print(f"[Diffuser] Loading diffuser model {config.DIFFUSER_MODEL_NAME}...")
+            diffuser_model = DiffuserModel(model_name=config.DIFFUSER_MODEL_NAME)
+            print(f"[Diffuser] Model loaded successfully")
+        except Exception as e:
+            print(f"[Diffuser] Error loading diffuser model: {e}")
+            diffuser_model = None
         
-    # Initialize the KV Cache Patcher
-    try:
-        print(f"[KVPatcher] Initializing KV Cache Patcher...")
-        kv_patcher = KVCachePatcher(model)
-        print(f"[KVPatcher] Initialized successfully")
-    except Exception as e:
-        print(f"[KVPatcher] Error initializing KV Cache Patcher: {e}")
-        kv_patcher = None
+    # Initialize the KV Cache Patcher if not already initialized
+    if kv_patcher is None:
+        try:
+            print(f"[KVPatcher] Initializing KV Cache Patcher...")
+            kv_patcher = KVCachePatcher(model)
+            print(f"[KVPatcher] Initialized successfully")
+        except Exception as e:
+            print(f"[KVPatcher] Error initializing KV Cache Patcher: {e}")
+            kv_patcher = None
     
     # VRAM monitoring disabled - no longer using sliding window approach
     # sliding_event is just initialized but not actively used
@@ -970,7 +800,7 @@ async def run_continuous_inference(model, processor, controller, initial_prompt_
         print(f"--- Sliding window will target fallback size: {dynamic_ceiling} once VRAM threshold is hit ---", flush=True)
     # Original large window_size is no longer the primary trigger
     # window_size = min(max_length - 512, 100000)
-    if config.config.OFFLOAD_KV_CACHE_TO_CPU:
+    if config.OFFLOAD_KV_CACHE_TO_CPU:
         print("--- KV Cache configured for CPU offload (if needed) ---", flush=True)
 
     # --- Check if initial_prompt_content is already formatted or needs formatting ---
@@ -1024,7 +854,7 @@ async def run_continuous_inference(model, processor, controller, initial_prompt_
     # Clear the KV Mirror state for this run
     kv_mirror_manager.clear()
     
-    # Register ALL initial tokens in the KV Mirror structure, not limited by config.config.CONTEXT_WINDOW_TARGET
+    # Register ALL initial tokens in the KV Mirror structure, not limited by config.CONTEXT_WINDOW_TARGET
     initial_sequence_length = input_ids.shape[1]
     print(f"[KV Mirror] Initializing with ALL {initial_sequence_length} tokens from initial prompt")
     
@@ -1263,14 +1093,14 @@ async def run_continuous_inference(model, processor, controller, initial_prompt_
 async def setup_ai_core(initial_prompt="The simulation awakens. A stream of consciousness begins to flow. What thoughts emerge?", 
                       context_file="context_history.txt",
                       resume_context_file="resume_context.txt",
-                      context_window_target=config.config.CONTEXT_WINDOW_TARGET,
+                      context_window_target=config.CONTEXT_WINDOW_TARGET,
                       vram_threshold_percent=80.0, 
                       vram_check_interval=5):
     """Initialize and return core AI components, including sliding event."""
     global model, processor, diffuser_model, kv_patcher, sliding_event, kv_mirror_manager  # Ensure shared variables are accessible
     
     # Load model and processor if not already loaded
-    model, processor = load_model(config.config.MODEL_NAME, config.config.TRUST_REMOTE_CODE)
+    model, processor = load_model(config.MODEL_NAME, config.TRUST_REMOTE_CODE)
     
     # Try to load resume context file first (high-priority)
     effective_initial_prompt = initial_prompt
@@ -1316,30 +1146,36 @@ async def setup_ai_core(initial_prompt="The simulation awakens. A stream of cons
     pending_diffs_queue = asyncio.Queue(maxsize=config.COMPACTOR_BUFFER_SIZE)
     compactor_request_queue = asyncio.Queue(maxsize=config.COMPACTOR_BUFFER_SIZE)
     
-    # Initialize KV Mirror for tracking token context
+    # Initialize KV Mirror for tracking token context if not already initialized
     global kv_mirror_manager
-    print(f"[KVMirror] Initializing KV Mirror...")
-    kv_mirror_manager = KVMirror(max_positions=2048)
-    print(f"[KVMirror] Initialized successfully")
+    if kv_mirror_manager is None:
+        print(f"[KVMirror] Initializing KV Mirror...")
+        kv_mirror_manager = KVMirror()
+        print(f"[KVMirror] Initialized successfully")
+    else:
+        # Clear the KV Mirror to reset state
+        kv_mirror_manager.clear()
     
-    # Initialize the diffuser model for token repair
+    # Initialize the diffuser model for token repair if not already initialized
     global diffuser_model
-    try:
-        print(f"[Diffuser] Loading diffuser model {config.DIFFUSER_MODEL_NAME}...")
-        diffuser_model = DiffuserModel(model_name=config.DIFFUSER_MODEL_NAME)
-        print(f"[Diffuser] Model loaded successfully")
-    except Exception as e:
-        print(f"[Diffuser] Error loading diffuser model: {e}")
-        diffuser_model = None
+    if diffuser_model is None:
+        try:
+            print(f"[Diffuser] Loading diffuser model {config.DIFFUSER_MODEL_NAME}...")
+            diffuser_model = DiffuserModel(model_name=config.DIFFUSER_MODEL_NAME)
+            print(f"[Diffuser] Model loaded successfully")
+        except Exception as e:
+            print(f"[Diffuser] Error loading diffuser model: {e}")
+            diffuser_model = None
         
-    # Initialize the KV Cache Patcher
-    try:
-        print(f"[KVPatcher] Initializing KV Cache Patcher...")
-        kv_patcher = KVCachePatcher(model)
-        print(f"[KVPatcher] Initialized successfully")
-    except Exception as e:
-        print(f"[KVPatcher] Error initializing KV Cache Patcher: {e}")
-        kv_patcher = None
+    # Initialize the KV Cache Patcher if not already initialized
+    if kv_patcher is None:
+        try:
+            print(f"[KVPatcher] Initializing KV Cache Patcher...")
+            kv_patcher = KVCachePatcher(model)
+            print(f"[KVPatcher] Initialized successfully")
+        except Exception as e:
+            print(f"[KVPatcher] Error initializing KV Cache Patcher: {e}")
+            kv_patcher = None
     
     # VRAM monitoring disabled - no longer using sliding window approach
     # sliding_event is just initialized but not actively used

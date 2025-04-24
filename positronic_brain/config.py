@@ -33,6 +33,7 @@ TEMPORAL_PENALTY_FACTOR = 0.005  # Factor for age-based pruning penalty
 BRIGHTNESS_ALPHA = 0.7      # Weight for new attention-based brightness
 BRIGHTNESS_BETA = 0.3       # Weight for existing brightness (decay factor)
 BRIGHTNESS_REPAIR_THRESHOLD = 50.0  # Only repair tokens with brightness below this threshold
+INITIAL_TOKEN_BRIGHTNESS = 255.0    # Initial brightness value for newly registered tokens
 MAX_REPAIR_TOKENS_PER_STEP = 5      # Maximum number of tokens to repair in a single step
 
 # --- Compactor Configuration ---
