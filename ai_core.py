@@ -450,7 +450,7 @@ async def _generate_next_token(
         try:
             # Debug logging for standard generation path
             print(f"[Debug] Standard generation shapes: input_ids={model_input_ids.shape}, " 
-                  f"attention_mask={current_attention_mask_for_call.shape}, " 
+                  f"attention_mask={current_attention_mask_for_call.shape if current_attention_mask_for_call is not None else 'None'}, " 
                   f"using_kv_cache={past_key_values is not None}, " 
                   f"context_length={input_ids.shape[1]}", file=sys.stderr)
         except Exception as e:
@@ -459,16 +459,15 @@ async def _generate_next_token(
         # --- Step 1: Standard Model Forward Pass for Token Generation ---
         # Always use attention mask for Kimi-VL model (it has an assert attention_mask is not None)
         
-        # Defensive check: Verify attention mask and input dimensions match properly
-        if past_key_values is not None:
-            current_input_len = model_input_ids.shape[1]  # Should be 1 if using cache
-            cache_len = past_key_values[0][0].shape[2]
-            # The model expects input len + cache len for attention mask
-            expected_attn_len = current_input_len + cache_len
-            if current_attention_mask_for_call.shape[1] != expected_attn_len:
-                print(f"[ASSERT FAIL] Attention mask length mismatch! Mask: {current_attention_mask_for_call.shape[1]}, Expected: {expected_attn_len} (Input: {current_input_len}, Cache: {cache_len})", file=sys.stderr)
-                # Don't raise error yet, just log the warning so we can analyze without crashing
-                # raise AssertionError(f"Attention mask length mismatch!")
+        # O1 Fix: Removed defensive check for attention mask dimensions
+        # When attention_mask is None, we can't check its shape
+        # if past_key_values is not None and current_attention_mask_for_call is not None:
+        #     current_input_len = model_input_ids.shape[1]  # Should be 1 if using cache
+        #     cache_len = past_key_values[0][0].shape[2]
+        #     # The model expects input len + cache len for attention mask
+        #     expected_attn_len = current_input_len + cache_len
+        #     if current_attention_mask_for_call.shape[1] != expected_attn_len:
+        #         print(f"[ASSERT FAIL] Attention mask length mismatch! Mask: {current_attention_mask_for_call.shape[1]}, Expected: {expected_attn_len} (Input: {current_input_len}, Cache: {cache_len})", file=sys.stderr)
         
         # --- Apply Pending Patches (if any) ---
         if kv_patcher is not None and pending_diffs_queue is not None and past_key_values is not None:
@@ -516,19 +515,22 @@ async def _generate_next_token(
             with torch.no_grad():
                 # Include position_ids when using KV cache
                 if past_key_values is not None:
+                    # O1 Fix: Handle None attention mask correctly
+                    # Don't call .to() on None - just pass None directly to execute_forward_pass
                     logits, llm_output_past_key_values, outputs_attentions = execute_forward_pass(
                         model=model, 
                         input_ids=model_input_ids.to(model.device),
-                        attention_mask=current_attention_mask_for_call.to(model.device),
+                        attention_mask=current_attention_mask_for_call,  # Could be None, which is what we want
                         position_ids=position_ids,  # Explicitly pass position_ids
                         past_key_values=past_key_values
                     )
                 else:
                     # Initial pass (no KV cache) doesn't need explicit position_ids
+                    # But we still need to handle None attention masks correctly
                     logits, llm_output_past_key_values, outputs_attentions = execute_forward_pass(
                         model=model, 
                         input_ids=model_input_ids.to(model.device),
-                        attention_mask=current_attention_mask_for_call.to(model.device),
+                        attention_mask=None if current_attention_mask_for_call is None else current_attention_mask_for_call.to(model.device),
                         past_key_values=past_key_values
                     )
             # Update past_key_values for the next iteration
