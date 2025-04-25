@@ -51,7 +51,7 @@ def load_model(model_name: str, trust_remote_code: bool):
     model = AutoModelForCausalLM.from_pretrained(
         model_name,
         torch_dtype="auto",
-        device_map="auto",  # Let the library optimize device placement
+        device_map={"":0},  # Force entire model onto a single GPU device (cuda:0)
         trust_remote_code=trust_remote_code,
         output_attentions=True,  # Enable attention output for attention-based KV cache management
         return_dict_in_generate=True  # Enable return dict in generate for attention scores

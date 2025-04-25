@@ -30,14 +30,14 @@ CONTEXT_WINDOW_TARGET = 500  # Target size of KV cache after pruning
 TEMPORAL_PENALTY_FACTOR = 0.005  # Factor for age-based pruning penalty
 
 # --- Brightness Engine Configuration ---
-BRIGHTNESS_ALPHA = 0.7      # Weight for new attention-based brightness
-BRIGHTNESS_BETA = 0.3       # Weight for existing brightness (decay factor)
-BRIGHTNESS_REPAIR_THRESHOLD = 50.0  # Only repair tokens with brightness below this threshold
+BRIGHTNESS_ALPHA = 0.5      # Weight for new attention-based brightness (decreased to reduce attention boost)
+BRIGHTNESS_BETA = 0.75      # Weight for existing brightness (increased to accelerate decay)
+BRIGHTNESS_REPAIR_THRESHOLD = 180.0  # Only repair tokens with brightness below this threshold (increased)
 INITIAL_TOKEN_BRIGHTNESS = 255.0    # Initial brightness value for newly registered tokens
-MAX_REPAIR_TOKENS_PER_STEP = 5      # Maximum number of tokens to repair in a single step
+MAX_REPAIR_TOKENS_PER_STEP = 15     # Maximum number of tokens to repair in a single step (increased)
 
 # --- Compactor Configuration ---
-COMPACTOR_SLEEP_INTERVAL = 5.0       # Seconds between Compactor repair cycles
+COMPACTOR_SLEEP_INTERVAL = 1.0       # Seconds between Compactor repair cycles (decreased)
 COMPACTOR_BUFFER_SIZE = 10          # Maximum number of diffs that can be queued
 COMPACTOR_ENABLED = True            # Whether the Compactor is enabled
 COMPACTOR_WINDOW_SIZE = 16          # Size of context window around repair position

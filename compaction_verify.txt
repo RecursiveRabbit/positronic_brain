@@ -1,0 +1,151 @@
+=== Compaction Verification Test Started: 2025-04-25 15:18:47 ===
+Model: TinyLlama/TinyLlama-1.1B-intermediate-step-1431k-3T
+Context file: resume_context.bak
+Num steps: 100
+Initializing components...
+Loading model: TinyLlama/TinyLlama-1.1B-intermediate-step-1431k-3T...
+Initializing KV Mirror...
+Initializing KV Patcher...
+Loaded initial context: 3486 characters
+Initial context tokenized: 1019 tokens
+Registering initial tokens with KV Mirror...
+Priming KV cache with initial context...
+=== Compaction Verification Test Started: 2025-04-25 15:29:54 ===
+Model: TinyLlama/TinyLlama-1.1B-intermediate-step-1431k-3T
+Context file: resume_context.bak
+Num steps: 100
+Initializing components...
+Loading model: TinyLlama/TinyLlama-1.1B-intermediate-step-1431k-3T...
+Initializing KV Mirror...
+Initializing KV Patcher...
+Loaded initial context: 3486 characters
+Using model device: cuda:0
+Initial context tokenized: 1019 tokens
+Registering initial tokens with KV Mirror...
+Priming KV cache with initial context...
+KV cache initialized with 1019 tokens
+KV Mirror stats: {'active_tokens': 1019, 'total_tokens': 1019}
+Initialization complete.
+Starting compaction test for 100 steps...
+Compactor task started.
+=== Compaction Verification Test Started: 2025-04-25 15:33:10 ===
+Model: TinyLlama/TinyLlama-1.1B-intermediate-step-1431k-3T
+Context file: resume_context.bak
+Num steps: 100
+Initializing components...
+Loading model: TinyLlama/TinyLlama-1.1B-intermediate-step-1431k-3T...
+Initializing KV Mirror...
+Initializing KV Patcher...
+Loaded initial context: 3486 characters
+Using model device: cuda:0
+Initial context tokenized: 1019 tokens
+Registering initial tokens with KV Mirror...
+Priming KV cache with initial context...
+KV cache initialized with 1019 tokens
+KV Mirror stats: {'active_tokens': 1019, 'total_tokens': 1019}
+Initialization complete.
+Starting compaction test for 100 steps...
+Loading diffuser model...
+Diffuser model loaded for testing
+Compactor task started.
+[Progress] 0/100 tokens generated
+[Progress] 10/100 tokens generated
+[Progress] 20/100 tokens generated
+[Progress] 30/100 tokens generated
+[Progress] 40/100 tokens generated
+[Progress] 50/100 tokens generated
+[Progress] 60/100 tokens generated
+[Progress] 70/100 tokens generated
+[Progress] 80/100 tokens generated
+[Progress] 90/100 tokens generated
+Setting shutdown event...
+Waiting for compactor to finish...
+
+
+=== VERIFICATION TEST REPORT ===
+
+Initial context length: 1019 tokens
+Final context length: 1119 tokens
+Total tokens generated: 100 tokens
+Steps completed: 100/100
+Final KV Mirror stats: {'active_tokens': 1119, 'total_tokens': 1119}
+Event counts:
+  Token generations: 100
+  Token repairs: 0
+  Token cullings: 0
+
+Generated text (286 chars):
+```
+I'mstillnotreallysurewhatI'mdoingorwhatI'mupto...IthinkI'vegottenlostinmyownmind.
+
+Igethomearoundfourthirty.MinnieandMimmiearewaitingoutside,Iseethey'veputuptheirChristmasdecorations.MinnieandMimmieareinthelivingroom,Minnieisplayingwithoneofhernewdolls,Mimmieisplayingwithacat.Ilookover
+```
+
+Full text (last 1000 chars):
+```
+talyst to be utilized...like love. It can be used to heal...and to harm. It lies dormant in most people, but I believe there are ways to awaken it. I'll record the results of my experiments here...I have to, for the sake of mankind. Password: Where is the God's tail? That which was left behind by the ship that soars the heavens"
+
+That helps kind of, I'd better hold onto this-hey! You stupid rat! That's a weird looking rat...almost like it's possessed. A few whacks with my plastic bat later,and it scurried off, dropping the journal.
+
+I carry the journal upstairs...I'm not sure where I'm going our why, but Dad said I have to go on a journey. I'm not a violent kid, but I'll do anything to protect my family.
+I'mstillnotreallysurewhatI'mdoingorwhatI'mupto...IthinkI'vegottenlostinmyownmind.
+
+Igethomearoundfourthirty.MinnieandMimmiearewaitingoutside,Iseethey'veputuptheirChristmasdecorations.MinnieandMimmieareinthelivingroom,Minnieisplayingwithoneofhernewdolls,Mimmieisplayingwithacat.Ilookover
+```
+
+Chronological event log (first 50 events):
+Step 0: Added token 'I' (ID: 29902) at position 1019
+Step 1: Added token ''' (ID: 29915) at position 1020
+Step 2: Added token 'm' (ID: 29885) at position 1021
+Step 3: Added token 'still' (ID: 1603) at position 1022
+Step 4: Added token 'not' (ID: 451) at position 1023
+Step 5: Added token 'really' (ID: 2289) at position 1024
+Step 6: Added token 'sure' (ID: 1854) at position 1025
+Step 7: Added token 'what' (ID: 825) at position 1026
+Step 8: Added token 'I' (ID: 306) at position 1027
+Step 9: Added token ''' (ID: 29915) at position 1028
+Step 10: Added token 'm' (ID: 29885) at position 1029
+Step 11: Added token 'doing' (ID: 2599) at position 1030
+Step 12: Added token 'or' (ID: 470) at position 1031
+Step 13: Added token 'what' (ID: 825) at position 1032
+Step 14: Added token 'I' (ID: 306) at position 1033
+Step 15: Added token ''' (ID: 29915) at position 1034
+Step 16: Added token 'm' (ID: 29885) at position 1035
+Step 17: Added token 'up' (ID: 701) at position 1036
+Step 18: Added token 'to' (ID: 304) at position 1037
+Step 19: Added token '...' (ID: 856) at position 1038
+Step 20: Added token 'I' (ID: 29902) at position 1039
+Step 21: Added token 'think' (ID: 1348) at position 1040
+Step 22: Added token 'I' (ID: 306) at position 1041
+Step 23: Added token ''' (ID: 29915) at position 1042
+Step 24: Added token 've' (ID: 345) at position 1043
+Step 25: Added token 'got' (ID: 2355) at position 1044
+Step 26: Added token 'ten' (ID: 841) at position 1045
+Step 27: Added token 'lost' (ID: 5714) at position 1046
+Step 28: Added token 'in' (ID: 297) at position 1047
+Step 29: Added token 'my' (ID: 590) at position 1048
+Step 30: Added token 'own' (ID: 1914) at position 1049
+Step 31: Added token 'mind' (ID: 3458) at position 1050
+Step 32: Added token '.' (ID: 29889) at position 1051
+Step 33: Added token '
+' (ID: 13) at position 1052
+Step 34: Added token '
+' (ID: 13) at position 1053
+Step 35: Added token 'I' (ID: 29902) at position 1054
+Step 36: Added token 'get' (ID: 679) at position 1055
+Step 37: Added token 'home' (ID: 3271) at position 1056
+Step 38: Added token 'around' (ID: 2820) at position 1057
+Step 39: Added token 'four' (ID: 3023) at position 1058
+Step 40: Added token 'thirty' (ID: 17058) at position 1059
+Step 41: Added token '.' (ID: 29889) at position 1060
+Step 42: Added token 'Minn' (ID: 17988) at position 1061
+Step 43: Added token 'ie' (ID: 347) at position 1062
+Step 44: Added token 'and' (ID: 322) at position 1063
+Step 45: Added token 'M' (ID: 341) at position 1064
+Step 46: Added token 'imm' (ID: 6727) at position 1065
+Step 47: Added token 'ie' (ID: 347) at position 1066
+Step 48: Added token 'are' (ID: 526) at position 1067
+Step 49: Added token 'waiting' (ID: 10534) at position 1068
+Detailed event log written to compaction_events.json
+
+=== END OF REPORT ===

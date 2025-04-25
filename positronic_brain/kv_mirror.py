@@ -301,6 +301,42 @@ class KVMirror:
             
         return results
     
+    def get_token_brightness(self, position: int) -> Optional[float]:
+        """Safely retrieves the brightness of the token at a given position.
+        
+        Args:
+            position: The position of the token in the KV mirror
+            
+        Returns:
+            The brightness value of the token, or None if the token is not found
+        """
+        with self._lock:
+            instance_id = self._pos.get(position)
+            if instance_id is not None:
+                token = self._registry.get(instance_id)
+                if token is not None and hasattr(token, 'brightness'):
+                    return token.brightness
+            return None
+    
+    def set_token_brightness(self, position: int, brightness: float) -> bool:
+        """Set the brightness value for a token at the given position.
+        
+        Args:
+            position: The position of the token in the KV mirror
+            brightness: The new brightness value to set
+            
+        Returns:
+            True if the token was found and updated, False otherwise
+        """
+        with self._lock:
+            instance_id = self._pos.get(position)
+            if instance_id is not None:
+                token = self._registry.get(instance_id)
+                if token is not None and hasattr(token, 'brightness'):
+                    token.brightness = brightness
+                    return True
+            return False
+            
     @timed_histogram("kv_mirror_update_brightness_seconds")
     def batch_update_brightness(self, updates: Dict[int, float]) -> Dict[str, int]:
         """Atomically update brightness scores for multiple token instances.
