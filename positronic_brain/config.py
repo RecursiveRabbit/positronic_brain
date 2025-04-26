@@ -35,8 +35,8 @@ BRIGHTNESS_SEED = {
     'user': 255.0,     # User tokens start at maximum brightness
     'system': 255.0,   # System tokens start at maximum brightness
     'tool': 255.0,     # Tool tokens start at maximum brightness
-    'llm': 200.0,      # Model-generated tokens start at slightly lower brightness
-    'default': 200.0   # Default for any unspecified sources
+    'llm': 255.0,      # Model-generated tokens also start at maximum brightness
+    'default': 255.0   # Default for any unspecified sources
 }
 
 # Brightness mechanics

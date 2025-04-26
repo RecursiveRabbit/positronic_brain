@@ -94,16 +94,26 @@ async def test_culling_task_once():
     }
     
     # After culling, the size should be smaller
+    # Create token objects for the mock
+    mock_tokens = {
+        1: MagicMock(spec=ContextToken, brightness=100.0),
+        2: MagicMock(spec=ContextToken, brightness=50.0),  # Dimmest
+        3: MagicMock(spec=ContextToken, brightness=150.0),
+        4: MagicMock(spec=ContextToken, brightness=75.0),  # 2nd dimmest
+        5: MagicMock(spec=ContextToken, brightness=200.0),
+        6: MagicMock(spec=ContextToken, brightness=175.0),
+    }
+    
     mock_kv_mirror.snapshot.side_effect = [
         # First call returns 6 tokens
         {
             'kv_mirror': {0: 1, 1: 2, 2: 3, 3: 4, 4: 5, 5: 6},
-            'tokens': {/* same as above */}
+            'tokens': mock_tokens
         },
         # Second call (after culling) returns 4 tokens
         {
             'kv_mirror': {0: 1, 2: 3, 4: 5, 5: 6},
-            'tokens': {/* reduced set */}
+            'tokens': {k: v for k, v in mock_tokens.items() if k != 2 and k != 4}
         }
     ]
     
