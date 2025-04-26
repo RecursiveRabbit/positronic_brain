@@ -30,11 +30,23 @@ CONTEXT_WINDOW_TARGET = 500  # Target size of KV cache after pruning
 TEMPORAL_PENALTY_FACTOR = 0.005  # Factor for age-based pruning penalty
 
 # --- Brightness Engine Configuration ---
-BRIGHTNESS_ALPHA = 0.5      # Weight for new attention-based brightness (decreased to reduce attention boost)
-BRIGHTNESS_BETA = 0.75      # Weight for existing brightness (increased to accelerate decay)
-BRIGHTNESS_REPAIR_THRESHOLD = 180.0  # Only repair tokens with brightness below this threshold (increased)
-INITIAL_TOKEN_BRIGHTNESS = 255.0    # Initial brightness value for newly registered tokens
-MAX_REPAIR_TOKENS_PER_STEP = 15     # Maximum number of tokens to repair in a single step (increased)
+# Brightness Seeding - Initial brightness based on token source
+BRIGHTNESS_SEED = {
+    'user': 255.0,     # User tokens start at maximum brightness
+    'system': 255.0,   # System tokens start at maximum brightness
+    'tool': 255.0,     # Tool tokens start at maximum brightness
+    'llm': 200.0,      # Model-generated tokens start at slightly lower brightness
+    'default': 200.0   # Default for any unspecified sources
+}
+
+# Brightness mechanics
+BRIGHTNESS_MAX = 255.0              # Maximum brightness value (cap)
+BRIGHTNESS_DECAY_PER_TICK = 2.0     # Amount brightness decays each generation step
+BRIGHTNESS_GAIN_COEFFICIENT = 10.0  # Multiplier for attention-based brightness gain
+INITIAL_TOKEN_BRIGHTNESS = 255.0    # Legacy parameter - use BRIGHTNESS_SEED instead
+
+# Attention trace settings
+ATTENTION_TRACE_INTERVAL = 50       # Save attention traces every N steps (0 to disable)
 
 # --- Compactor Configuration ---
 COMPACTOR_SLEEP_INTERVAL = 1.0       # Seconds between Compactor repair cycles (decreased)

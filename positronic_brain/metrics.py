@@ -6,7 +6,7 @@ import inspect
 if not hasattr(functools, 'iscoroutinefunction'):
     functools.iscoroutinefunction = inspect.iscoroutinefunction
 
-from prometheus_client import Histogram, Gauge, Counter, start_http_server, REGISTRY
+from prometheus_client import Histogram, Gauge, Counter, Summary, start_http_server, REGISTRY
 from prometheus_client.exposition import generate_latest
 
 # --- Prometheus Metrics Definitions ---
@@ -15,6 +15,7 @@ from prometheus_client.exposition import generate_latest
 _histograms: dict[str, Histogram] = {}
 _gauges: dict[str, Gauge] = {}
 _counters: dict[str, Counter] = {}
+_summaries: dict[str, Summary] = {}
 
 # --- Decorator for Timing Histograms ---
 def timed_histogram(name: str, description: str = ''):
@@ -76,6 +77,27 @@ def inc_counter(name: str, value: float = 1.0, description: str = ''):
         )
     # Increment the counter
     counter.inc(value)
+    
+def inc_histogram(name: str, value: float, description: str = ''):
+    """Observe a value in a Prometheus Summary (used for histogram-like distributions).
+    
+    This function is used for recording distribution metrics like attention scores,
+    where we want to track statistics like min, max, avg, median, etc.
+    
+    Args:
+        name: Name of the metric
+        value: Value to record
+        description: Optional description of the metric
+    """
+    # Get or create the summary (using our cached dictionary)
+    summary = _summaries.get(name)
+    if summary is None:
+        summary = _summaries.setdefault(
+            name,
+            Summary(name, description or f'Distribution of {name}')
+        )
+    # Observe the value
+    summary.observe(value)
 
 # --- Metrics Server Initialization ---
 def init_metrics_server(port: int = 9100):

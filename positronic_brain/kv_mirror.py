@@ -42,7 +42,7 @@ class KVMirror:
             return self._global_generation_step
 
     @timed_histogram("kv_mirror_add_seconds")
-    def add(self, token_id: int, position: int, *, source: str = 'llm', removal_bias: float = 0.0, brightness: float = 255.0) -> int:
+    def add(self, token_id: int, position: int, *, source: str = 'llm', removal_bias: float = 0.0, brightness: Optional[float] = None) -> int:
         """Atomically add a new token to the KV mirror and registry.
         
         This is the primary function for adding new tokens to the context tracking system.
@@ -61,6 +61,13 @@ class KVMirror:
         """
         # Get a unique instance ID for this token
         instance_id = self._get_next_instance_id()
+        
+        # Set initial brightness based on token source using BRIGHTNESS_SEED dictionary
+        from . import config
+        
+        # If no brightness is explicitly provided, use the source-based seeding
+        if brightness is None:
+            brightness = config.BRIGHTNESS_SEED.get(source, config.BRIGHTNESS_SEED['default'])
         
         # Create token instance
         token = ContextToken(
@@ -320,6 +327,7 @@ class KVMirror:
     
     def set_token_brightness(self, position: int, brightness: float) -> bool:
         """Set the brightness value for a token at the given position.
+        Brightness is automatically clamped between 0 and config.BRIGHTNESS_MAX.
         
         Args:
             position: The position of the token in the KV mirror
@@ -328,12 +336,17 @@ class KVMirror:
         Returns:
             True if the token was found and updated, False otherwise
         """
+        from . import config
+        
+        # Clamp brightness between 0 and BRIGHTNESS_MAX
+        clamped_brightness = max(0.0, min(config.BRIGHTNESS_MAX, brightness))
+        
         with self._lock:
             instance_id = self._pos.get(position)
             if instance_id is not None:
                 token = self._registry.get(instance_id)
                 if token is not None and hasattr(token, 'brightness'):
-                    token.brightness = brightness
+                    token.brightness = clamped_brightness
                     return True
             return False
             
