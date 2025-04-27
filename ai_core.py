@@ -23,6 +23,7 @@ from positronic_brain.vram_monitor import vram_monitor_task
 from positronic_brain.utils import get_top_tokens, _async_save_context_text, update_top_tokens
 from positronic_brain.persistence import save_context, load_context
 from positronic_brain.kv_patcher import KVCachePatcher
+from positronic_brain.context_maintenance import ContextMaintenance
 import asyncio
 import sys
 import gc
@@ -668,53 +669,63 @@ async def _generate_next_token(
             
             # Queue the output token for display
             await output_queue.put(next_token_text)
-        
-        if shared_state is not None and 'token_frequency' in shared_state:
-            async with shared_state['lock']:
-                if generated_token_id not in shared_state['token_frequency']:
-                    shared_state['token_frequency'][generated_token_id] = 0
-                shared_state['token_frequency'][generated_token_id] += 1
-        # Temporarily disable brightness updates - no attentions with output_attentions=False
-        # if kv_mirror_manager is not None and not skip_iteration:
-        #     brightness_scores = update_brightness_scores(
-        #         kv_mirror_manager=kv_mirror_manager,
-        #         outputs=outputs,
-        #         alpha=config.BRIGHTNESS_ALPHA,
-        #         beta=config.BRIGHTNESS_BETA
-        #     )
-        #     print(f"[Brightness] Updated scores for token index {input_ids.shape[1]-1}", file=sys.stderr)
-        print(f"[O1 Triage] Brightness updates disabled for testing", file=sys.stderr)
-
-        # Process diffs from Compactor (if any)
-        if past_key_values is not None and pending_diffs_queue is not None:
-            diffs_to_apply = []
-            try:
-                while not pending_diffs_queue.empty():
-                    try:
-                        # Get all currently available diffs without blocking indefinitely
-                        diff_item = pending_diffs_queue.get_nowait()
-                        diffs_to_apply.append(diff_item)
-                        pending_diffs_queue.task_done()  # Mark task done for queue management
-                    except asyncio.QueueEmpty:
-                        break  # No more items currently available
             
-                # Apply diffs to the KV Mirror and KV cache
-                if diffs_to_apply:
-                    print(f"[Compactor] Applying {len(diffs_to_apply)} diffs from Compactor", file=sys.stderr)
-                    try:
-                        # First update the KV Mirror canonical state
-                        update_summary = kv_mirror_manager.apply_diff(diffs_to_apply)
-                        print(f"[KVMirror] Applied diffs: {update_summary}", file=sys.stderr)
-                    
-                        # Then patch the actual KV cache tensors
-                        if past_key_values is not None:
-                            past_key_values = kv_patcher.patch(past_key_values, diffs_to_apply)
-                            print(f"[KVPatcher] KV cache patched successfully", file=sys.stderr)
-                    except Exception as e:
-                        print(f"[Error] Failed applying compactor diffs: {e}", file=sys.stderr)
-            except Exception as e:
-                print(f"[Error] Exception checking compactor queue: {e}", file=sys.stderr)
+            # --- SYNCHRONOUS MAINTENANCE PHASE ---
+            # Run the maintenance phase immediately after token generation
+            # This performs brightness updates, culling, and repair in-sequence
+            try:
+                from positronic_brain.context_maintenance import ContextMaintenance
                 
+                # Create maintenance handler if not already available
+                global maintenance_handler
+                if not globals().get('maintenance_handler'):
+                    # Initialize global ContextMaintenance instance
+                    from positronic_brain.diffuser_runner import DiffuserModel
+                    
+                    global diffuser_model
+                    maintenance_handler = ContextMaintenance(
+                        kv_mirror_manager=kv_mirror_manager,
+                        diffuser=diffuser_model,
+                        kv_patcher=kv_patcher,
+                        main_model=model,
+                        processor=processor
+                    )
+                    print(f"[Maintenance] Initialized ContextMaintenance handler", file=sys.stderr)
+                
+                # Run maintenance phase synchronously, including:
+                # 1. Brightness updates
+                # 2. Culling based on brightness
+                # 3. Token repair (diffusion) if needed
+                patched_past_key_values, maintenance_events = await maintenance_handler.run_phase(
+                    model_outputs=outputs,
+                    current_input_ids=input_ids,
+                    current_attention_mask=attention_mask,
+                    current_past_key_values=past_key_values,
+                    generation_step=shared_state.get('total_tokens_generated', new_position)
+                )
+                
+                # Use patched KV cache if maintenance modified it
+                if patched_past_key_values is not None:
+                    past_key_values = patched_past_key_values
+                    print(f"[Maintenance] Using patched KV cache", file=sys.stderr)
+                
+                # Log maintenance events
+                if maintenance_events:
+                    for event in maintenance_events:
+                        print(f"[Maintenance] Event: {event['type']}", file=sys.stderr)
+                        
+                        # Update shared state with maintenance metrics
+                        if shared_state is not None and 'maintenance_metrics' in shared_state:
+                            async with shared_state['lock']:
+                                if 'events' not in shared_state['maintenance_metrics']:
+                                    shared_state['maintenance_metrics']['events'] = []
+                                shared_state['maintenance_metrics']['events'].append(event)
+            except Exception as e:
+                print(f"[Maintenance] Error during maintenance phase: {type(e).__name__}: {str(e)}", file=sys.stderr)
+                import traceback
+                traceback.print_exc()
+                # Continue without stopping token generation
+        
         return input_ids, attention_mask, past_key_values
     except Exception as e:
         print(f"[Generation] Error in token generation: {type(e).__name__}: {str(e)}", file=sys.stderr)
@@ -750,9 +761,6 @@ async def run_continuous_inference(model, processor, controller, initial_prompt_
     # Create resume_generation_event for controlling generation resumption
     resume_generation_event = asyncio.Event()
     resume_generation_event.set()  # Start with generation enabled
-    
-    # Create queue for pending diffs from compactor
-    pending_diffs_queue = asyncio.Queue()
     
     # Store the event in shared state for external access
     if shared_state is not None:
@@ -1063,7 +1071,7 @@ async def run_continuous_inference(model, processor, controller, initial_prompt_
                 processed_requests = 0
                 while processed_requests < config.MAX_REQUESTS_PER_CYCLE and not compactor_request_queue.empty():
                     try:
-                        reply_future, position, window_size, original_token_id = compactor_request_queue.get_nowait()
+                        start_pos, end_pos, repair_index_in_segment, original_token_id, reply_future = compactor_request_queue.get_nowait()
                         processed_requests += 1
 
                         # Skip if future is already completed or cancelled
@@ -1075,14 +1083,13 @@ async def run_continuous_inference(model, processor, controller, initial_prompt_
                             # Get current sequence length
                             current_seq_len = input_ids.shape[1]
                             
-                            # Check if position is valid
-                            if position < 0 or position >= current_seq_len:
-                                raise ValueError(f"Invalid position {position} for sequence length {current_seq_len}")
+                            # Check if positions are valid
+                            if start_pos < 0 or end_pos > current_seq_len or start_pos >= end_pos:
+                                raise ValueError(f"Invalid positions start={start_pos}, end={end_pos} for sequence length {current_seq_len}")
                             
-                            # Calculate slice boundaries (handle edges)
-                            start = max(0, position - window_size // 2)
-                            end = min(current_seq_len, position + window_size // 2 + 1)
-                            repair_index_in_segment = position - start
+                            # Use the provided start and end positions
+                            start = start_pos
+                            end = end_pos
                             
                             # Get embeddings from the embedding matrix
                             embeddings = model.get_input_embeddings().weight
@@ -1094,10 +1101,21 @@ async def run_continuous_inference(model, processor, controller, initial_prompt_
                             # Slice attention mask
                             attn_mask_segment = attention_mask[0, start:end].clone().detach().contiguous()
                             
+                            # Get brightness values for the segment
+                            brightness_map_segment = torch.zeros(end - start)
+                            for i in range(start, end):
+                                if i in kv_mirror_manager.tokens:
+                                    brightness_map_segment[i - start] = kv_mirror_manager.get_token_brightness(i)
+                            
+                            # Get original input IDs for the segment
+                            original_input_ids_segment = input_ids[:, start:end].clone().detach()
+                            
                             # Package result for the Future
                             result_data = {
                                 "input_embeddings_segment": embedding_segment,
                                 "attention_mask_segment": attn_mask_segment,
+                                "brightness_map_segment": brightness_map_segment,
+                                "original_input_ids_segment": original_input_ids_segment,
                                 "repair_index_in_segment": repair_index_in_segment,
                                 "original_token_id": original_token_id,
                                 "global_position_start": start  # Needed to map diff index back

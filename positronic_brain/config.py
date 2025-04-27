@@ -24,7 +24,7 @@ PRUNING_INTERVAL = 20            # Interval for pruning the KV cache
 MAX_BEAM_SOURCES = 1             # Maximum number of beam sources for sampling
 
 # --- Context Window Configuration ---
-CONTEXT_WINDOW_TARGET = 500  # Target size of KV cache after pruning
+CONTEXT_WINDOW_TARGET = 1000  # Target size of KV cache after pruning
 
 # --- Pruning Configuration ---
 TEMPORAL_PENALTY_FACTOR = 0.005  # Factor for age-based pruning penalty
@@ -32,21 +32,31 @@ TEMPORAL_PENALTY_FACTOR = 0.005  # Factor for age-based pruning penalty
 # --- Brightness Engine Configuration ---
 # Brightness Seeding - Initial brightness based on token source
 BRIGHTNESS_SEED = {
-    'user': 255.0,     # User tokens start at maximum brightness
-    'system': 255.0,   # System tokens start at maximum brightness
-    'tool': 255.0,     # Tool tokens start at maximum brightness
-    'llm': 255.0,      # Model-generated tokens also start at maximum brightness
-    'default': 255.0   # Default for any unspecified sources
+    'user': 255.0,         # User tokens start at maximum brightness
+    'user_inject': 255.0,  # User-injected tokens start at maximum brightness
+    'system': 255.0,       # System tokens start at maximum brightness
+    'system_init': 255.0,  # Initial context tokens start at maximum brightness
+    'tool': 255.0,         # Tool tokens start at maximum brightness
+    'llm': 255.0,          # Model-generated tokens start at maximum brightness
+    'default': 255.0       # Default for any unspecified sources
 }
 
 # Brightness mechanics
 BRIGHTNESS_MAX = 255.0              # Maximum brightness value (cap)
 BRIGHTNESS_DECAY_PER_TICK = 2.0     # Amount brightness decays each generation step
 BRIGHTNESS_GAIN_COEFFICIENT = 10.0  # Multiplier for attention-based brightness gain
-INITIAL_TOKEN_BRIGHTNESS = 255.0    # Legacy parameter - use BRIGHTNESS_SEED instead
+BRIGHTNESS_ALPHA = 0.5              # Scaling factor for brightness updates
+BRIGHTNESS_BETA = 0.1               # Secondary scaling factor for brightness updates
+# DEPRECATED - Do not use directly, instead use the BRIGHTNESS_SEED dictionary with appropriate source
+# Will be removed in future versions
+INITIAL_TOKEN_BRIGHTNESS = 255.0
 
 # Attention trace settings
 ATTENTION_TRACE_INTERVAL = 50       # Save attention traces every N steps (0 to disable)
+
+# --- Diffuser Brightness-Guided Noise parameters ---
+BRIGHTNESS_LOCK_THRESHOLD = 0.8     # Tokens with normalized brightness >= this value are locked (immutable)
+BRIGHTNESS_NOISE_ALPHA = 1.0        # Base noise intensity multiplier
 
 # --- Compactor Configuration ---
 COMPACTOR_SLEEP_INTERVAL = 1.0       # Seconds between Compactor repair cycles (decreased)
