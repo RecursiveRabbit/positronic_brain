@@ -363,12 +363,26 @@ class KVMirror:
         Returns:
             Dict with counts of successful and failed updates
         """
+        print(f"[DEBUG KVMirror] Entering batch_update_brightness with {len(updates)} updates...")
+        
         results = {
             'success': 0,
             'failed_instance_not_found': 0
         }
         
         with self._lock:
+            # Log a few samples of the updates to diagnose values
+            sample_count = min(5, len(updates))
+            if sample_count > 0:
+                sample_items = list(updates.items())[:sample_count]
+                print(f"[DEBUG KVMirror] Sample update values (first {sample_count}):", end=' ')
+                for instance_id, new_brightness in sample_items:
+                    token = self._registry.get(instance_id)
+                    current_brightness = token.brightness if token else None
+                    position = token.position if token else None
+                    print(f"ID:{instance_id} Pos:{position} {current_brightness:.2f}->{new_brightness:.2f}", end=', ')
+                print()
+            
             for instance_id, new_brightness in updates.items():
                 # Check if instance_id exists in registry
                 if instance_id not in self._registry:
@@ -379,13 +393,22 @@ class KVMirror:
                 clamped_brightness = max(0.0, min(255.0, new_brightness))
                 
                 # Update the brightness
+                old_brightness = self._registry[instance_id].brightness
                 self._registry[instance_id].brightness = clamped_brightness
+                
+                # Debug logging for first few updates
+                if results['success'] < 5:
+                    position = self._registry[instance_id].position
+                    print(f"[DEBUG KVMirror] Updated token at position {position}: "
+                          f"{old_brightness:.2f} -> {clamped_brightness:.2f}")
+                    
                 results['success'] += 1
             
             # Update metrics if any successful updates
             if results['success'] > 0:
                 inc_counter("kv_mirror_brightness_updates_total", results['success'])
             
+        print(f"[DEBUG KVMirror] Finished batch_update_brightness. Results: {results}")
         return results
     
     def get_stats(self) -> Dict:

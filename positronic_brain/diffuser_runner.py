@@ -223,25 +223,157 @@ def compute_diff(
     diffuser_model: DiffuserModel,
     input_embeddings: torch.Tensor,
     attention_mask: torch.Tensor,
+    brightness_map: torch.Tensor,
+    original_input_ids: torch.Tensor,
+    repair_indices: List[int] = None
+) -> List[Tuple[int, int, int]]:
+    """
+    Compute a diff of token repair suggestions using brightness-guided noise diffusion.
+    
+    This implements a brightness-based embedding noise approach where:
+    1. Tokens with normalized brightness >= BRIGHTNESS_LOCK_THRESHOLD are locked (kept unchanged).
+    2. Lower brightness tokens have noise added proportional to (1 - brightness).
+    3. The noisy embeddings are processed by the MLM to predict replacements.
+    
+    Args:
+        diffuser_model: The DiffuserModel instance
+        input_embeddings: Input embeddings tensor for the sequence (shape: [1, seq_len, embed_dim])
+        attention_mask: Attention mask tensor (shape: [1, seq_len])
+        brightness_map: Normalized brightness values (0-1) for each token (shape: [1, seq_len] or [seq_len])
+        original_input_ids: Original token IDs for the sequence (shape: [1, seq_len] or [seq_len])
+        repair_indices: Optional list of positions to repair. If None, all positions below
+                       the brightness threshold will be considered for repair.
+        
+    Returns:
+        List[Tuple[int, int, int]]: List of (position, old_token_id, new_token_id) tuples
+        representing the token repairs, in the format expected by KVMirror.apply_diff()
+    """
+    # Ensure model is loaded
+    if diffuser_model is None:
+        print("[Diffuser ERROR] Diffuser model not loaded. Cannot compute diff.")
+        return []
+        
+    from . import config
+    
+    diff_list = []
+    device = diffuser_model.device
+    
+    # Ensure inputs are on the correct device
+    input_embeddings = input_embeddings.to(device)
+    attention_mask = attention_mask.to(device)
+    
+    # Ensure brightness map has correct shape and device
+    # Normalize brightness from [0-255] to [0-1] if needed
+    b = brightness_map.to(device).float()
+    if b.max() > 1.0:  # Assuming max is ~255.0
+        b = b / config.BRIGHTNESS_MAX  # Normalize to [0, 1]
+    
+    if b.dim() == 1:
+        b = b.unsqueeze(0)  # Ensure [1, seq_len]
+    b = b.unsqueeze(-1)  # Shape: [1, seq_len, 1] for broadcasting
+    
+    # Ensure original_input_ids is on the correct device
+    original_input_ids = original_input_ids.to(device)
+    
+    seq_len = input_embeddings.shape[1]
+    
+    # Process tokens based on repair_indices or brightness
+    repair_tokens = []
+    
+    # If repair_indices is provided, only consider those positions
+    positions_to_check = repair_indices if repair_indices is not None else range(seq_len)
+    
+    for pos in positions_to_check:
+        # Skip positions outside of sequence range
+        if pos < 0 or pos >= seq_len:
+            print(f"[Diffuser WARNING] Repair index {pos} out of bounds for sequence length {seq_len}")
+            continue
+            
+        b_val = brightness_map[0, pos].item() if brightness_map.dim() > 1 else brightness_map[pos].item()
+        
+        # Skip positions where brightness >= lock threshold (these tokens are "frozen")
+        if b_val >= config.BRIGHTNESS_LOCK_THRESHOLD:
+            continue
+            
+        # For tokens below the lock threshold, we'll apply noise proportional to (1-brightness)
+        # and predict replacements
+        original_id = original_input_ids[0, pos].item() if original_input_ids.dim() > 1 else original_input_ids[pos].item()
+        repair_tokens.append((pos, b_val, original_id))
+    
+    try:
+        # 2. Threshold Lock Mask (1.0 for locked, 0.0 for modifiable)
+        lock_mask = (b >= config.BRIGHTNESS_LOCK_THRESHOLD).float()
+        
+        # 3. Compute Noise Scale (sigma_i = alpha * (1-b_i) * (1-lock_mask_i))
+        noise_scale = config.BRIGHTNESS_NOISE_ALPHA * (1.0 - b) * (1.0 - lock_mask)
+        
+        # Log some stats about the noise scale
+        num_locked = int(lock_mask.sum().item())
+        num_tokens = lock_mask.numel()
+        max_noise = float(noise_scale.max().item())
+        avg_noise = float(noise_scale.mean().item())
+        print(f"[Diffuser] Noise diffusion: {num_locked}/{num_tokens} tokens locked. "  
+              f"Max noise scale: {max_noise:.4f}, Avg: {avg_noise:.4f}")
+              
+        # 4. Inject Noise
+        noise = torch.randn_like(input_embeddings)
+        noisy_inputs = input_embeddings + noise_scale * noise
+        
+        # 5. MLM Forward Pass
+        with torch.no_grad():
+            outputs = diffuser_model.model(
+                inputs_embeds=noisy_inputs,
+                attention_mask=attention_mask
+            )
+            
+        # 6. Predict Tokens & Apply Lock
+        logits = outputs.logits  # Shape: [1, seq_len, vocab_size]
+        predicted_ids = torch.argmax(logits, dim=-1)  # Shape: [1, seq_len]
+        
+        # Ensure locked tokens remain unchanged (use original_input_ids)
+        lock_mask_bool = lock_mask.squeeze(-1).bool()  # Shape: [1, seq_len]
+        predicted_ids[lock_mask_bool] = original_input_ids[lock_mask_bool]
+        
+        # 7. Compute Diff
+        original_ids_list = original_input_ids[0].tolist()
+        predicted_ids_list = predicted_ids[0].tolist()
+        
+        for i in range(len(original_ids_list)):
+            # Only report diffs for *modifiable* tokens that actually changed
+            if lock_mask[0, i, 0].item() == 0.0 and original_ids_list[i] != predicted_ids_list[i]:
+                diff_list.append((i, original_ids_list[i], predicted_ids_list[i]))
+    
+    except Exception as e:
+        inc_counter("diffuser_compute_diff_error")
+        print(f"[Diffuser ERROR] Failed to compute diff: {str(e)}")
+    
+    return diff_list
+
+
+# For legacy support - simplified masking-based version without brightness
+@timed_histogram("diffuser_compute_diff_masking_seconds")
+def compute_diff_masking(
+    diffuser_model: DiffuserModel,
+    input_embeddings: torch.Tensor,
+    attention_mask: torch.Tensor,
     token_ids: List[int],
     repair_indices: List[int]
 ) -> List[Tuple[int, int, int]]:
     """
-    Compute a diff of token repair suggestions for multiple positions.
+    Legacy version of compute_diff using simple masking approach instead of noise.
     
-    This is the primary interface that the Compactor will use. It takes input embeddings
-    and returns a list of token replacements in the format expected by KVMirror.apply_diff().
+    This function is kept for compatibility with older code that hasn't been updated
+    to use the new brightness-guided noise diffusion approach.
     
     Args:
         diffuser_model: The DiffuserModel instance
-        input_embeddings: Input embeddings tensor [batch_size, seq_len, embed_dim]
+        input_embeddings: Input embeddings tensor for the sequence
         attention_mask: Attention mask tensor
         token_ids: List of original token IDs corresponding to all positions in the sequence
         repair_indices: List of positions to repair
         
     Returns:
         List[Tuple[int, int, int]]: List of (position, old_token_id, new_token_id) tuples
-        representing the token repairs, in the format expected by KVMirror.apply_diff()
     """
     # Ensure model is loaded
     if diffuser_model is None:
@@ -332,4 +464,4 @@ def get_repaired_tokens(
     print("[Diffuser WARNING] Using legacy get_repaired_tokens function with hidden states")
     
     # Treat hidden states as input embeddings for backward compatibility
-    return compute_diff(diffuser_model, hidden_states, attention_mask, token_ids, repair_indices)
+    return compute_diff_masking(diffuser_model, hidden_states, attention_mask, token_ids, repair_indices)

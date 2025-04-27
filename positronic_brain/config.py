@@ -58,6 +58,10 @@ ATTENTION_TRACE_INTERVAL = 50       # Save attention traces every N steps (0 to 
 BRIGHTNESS_LOCK_THRESHOLD = 0.8     # Tokens with normalized brightness >= this value are locked (immutable)
 BRIGHTNESS_NOISE_ALPHA = 1.0        # Base noise intensity multiplier
 
+# --- Repair Configuration ---
+BRIGHTNESS_REPAIR_THRESHOLD = 180.0 # Tokens with brightness below this threshold are repair candidates
+MAX_REPAIR_TOKENS_PER_STEP = 2      # Maximum number of tokens to repair per maintenance phase
+
 # --- Compactor Configuration ---
 COMPACTOR_SLEEP_INTERVAL = 1.0       # Seconds between Compactor repair cycles (decreased)
 COMPACTOR_BUFFER_SIZE = 10          # Maximum number of diffs that can be queued

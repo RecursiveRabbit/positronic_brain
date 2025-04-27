@@ -1,8 +1,9 @@
 """
-Integration test for the Halo Weave v0 brightness culling system.
+Integration test for the Halo Weave v0 brightness-guided culling and diffusion system.
 
-This test is adapted from the verify_compaction.py script but focuses on testing
-the deterministic culling mechanism with brightness-based token selection.
+This test is adapted from the verify_compaction.py script and tests two key components:
+1. The deterministic culling mechanism with brightness-based token selection
+2. The brightness-guided noise diffusion for token repair
 """
 
 import os
@@ -19,6 +20,7 @@ from positronic_brain.kv_mirror import KVMirror
 from positronic_brain.model_io import load_model
 from positronic_brain.brightness_engine import update_brightness_scores
 from positronic_brain.culler import select_tokens_for_cull, culling_task
+from positronic_brain.diffuser_runner import compute_diff, DiffuserModel
 
 # --- Test Event Classes ---
 
@@ -52,6 +54,17 @@ class BrightnessUpdateEvent:
     brightness_before: float
     brightness_after: float
     attention_score: float
+    
+@dataclass
+class TokenDiffusionEvent:
+    """Event representing a token being modified by the diffuser."""
+    step: int
+    position: int
+    old_token_id: int
+    new_token_id: int
+    old_token_text: str
+    new_token_text: str
+    token_brightness: float
 
 # --- Test Runner ---
 
@@ -82,6 +95,8 @@ class CullingIntegrationTest:
         self.kv_mirror_manager = None
         self.input_ids = None
         self.attention_mask = None
+        self.diffuser_model = None
+        self.diffusion_interval = args.diffusion_interval
         
     def setup_logging(self):
         """Setup logging to both console and file."""
@@ -105,8 +120,8 @@ class CullingIntegrationTest:
         self.logger.info(message)
     
     async def setup(self):
-        """Initialize model, processor, and KV Mirror."""
-        self.log(f"Setting up culling integration test...")
+        """Initialize model, processor, KV Mirror, and diffuser."""
+        self.log(f"Setting up culling and diffusion integration test...")
         
         # Initialize KV Mirror
         self.kv_mirror_manager = KVMirror()
@@ -114,6 +129,19 @@ class CullingIntegrationTest:
         # Load model and processor
         self.log(f"Loading model {config.MODEL_NAME}...")
         self.model, self.processor = load_model(config.MODEL_NAME, config.TRUST_REMOTE_CODE)
+        
+        # Load diffuser model if diffusion is enabled
+        if self.diffusion_interval > 0:
+            self.log(f"Loading diffuser model {config.DIFFUSER_MODEL_NAME}...")
+            try:
+                self.diffuser_model = DiffuserModel(
+                    model_name=config.DIFFUSER_MODEL_NAME,
+                    device=config.DEVICE
+                )
+                self.log(f"Diffuser model loaded successfully")
+            except Exception as e:
+                self.log(f"Error loading diffuser model: {e}")
+                self.diffuser_model = None
         
         # Load initial context
         if self.args.context_file and os.path.exists(self.args.context_file):
@@ -248,7 +276,13 @@ class CullingIntegrationTest:
     
     async def run_test(self):
         """Run the integration test."""
-        self.log(f"Starting culling integration test with {self.args.num_steps} steps")
+        self.log(f"Starting culling and diffusion integration test with {self.args.num_steps} steps")
+        self.log(f"Initial context size: {self.initial_context_length} tokens")
+        self.log(f"Target maximum context size: {config.MAX_CONTEXT_SIZE} tokens")
+        if self.diffusion_interval > 0:
+            self.log(f"Diffusion interval: every {self.diffusion_interval} steps")
+        else:
+            self.log(f"Diffusion disabled (interval set to 0)")
         
         for step in range(1, self.args.num_steps + 1):
             # 1. Execute forward pass to get next token prediction
@@ -396,15 +430,19 @@ class CullingIntegrationTest:
                         if position in self.tracked_positions:
                             self.tracked_positions.remove(position)
                     
-                    # Cull the tokens
-                    self.kv_mirror_manager.prune(positions_to_cull)
+                    # Apply the culling
+                    self.kv_mirror_manager.cull_tokens(positions_to_cull)
+                    self.log(f"Culled {len(positions_to_cull)} tokens, new context size: {self.kv_mirror_manager.get_context_size()}")
+                    
+                    # Perform post-culling diffusion to repair potential coherence issues
+                    if self.diffuser_model is not None:
+                        await self.perform_diffusion(step, is_post_culling=True)
+                else:
                     if verbose_logging:
-                        self.log(f"[Step {step}] Culled {len(positions_to_cull)} tokens")
+                        self.log(f"[Step {step}] No tokens culled")
                     elif len(positions_to_cull) > 0:
                         # Minimal logging for non-verbose steps that actually culled something
                         self.log(f"[Step {step}] Culled {len(positions_to_cull)} tokens")
-                    
-                    # Verify positions were actually culled
                     new_snapshot = self.kv_mirror_manager.snapshot()
                     new_kv_mirror = new_snapshot['kv_mirror']
                     for pos in positions_to_cull:
@@ -417,13 +455,81 @@ class CullingIntegrationTest:
                 # Report on current context size
                 current_size = len(self.kv_mirror_manager.snapshot()['kv_mirror'])
                 self.log(f"[Context Size] {current_size} active tokens")
+            
+            # Perform diffusion if enabled and at the right interval
+            if self.diffuser_model is not None and self.diffusion_interval > 0 and step % self.diffusion_interval == 0:
+                await self.perform_diffusion(step)
         
         # Generate final report
         await self.generate_report()
     
+    async def perform_diffusion(self, generation_step, is_post_culling=False):
+        """Perform brightness-guided noise diffusion on the current context."""
+        if self.diffuser_model is None:
+            return
+            
+        self.log(f"Step {generation_step}: Running {'post-culling ' if is_post_culling else ''}brightness-guided diffusion...")
+        
+        try:
+            # Get current token embeddings from the model
+            input_embeddings = self.model.get_input_embeddings()(self.input_ids)
+            
+            # Get current attention mask
+            attention_mask = self.attention_mask
+            
+            # Get brightness values for all tokens
+            seq_len = self.input_ids.shape[1]
+            brightness_values = torch.zeros(seq_len)
+            for pos in range(seq_len):
+                if pos in self.kv_mirror_manager.tokens:
+                    brightness_values[pos] = self.kv_mirror_manager.get_token_brightness(pos)
+            
+            # Run brightness-guided noise diffusion
+            diff_list = compute_diff(
+                diffuser_model=self.diffuser_model,
+                input_embeddings=input_embeddings,
+                attention_mask=attention_mask,
+                brightness_map=brightness_values,
+                original_input_ids=self.input_ids
+            )
+            
+            # Apply and record diffs
+            if diff_list:
+                self.log(f"Diffusion suggested {len(diff_list)} token changes")
+                
+                for pos, old_token_id, new_token_id in diff_list:
+                    if pos in self.kv_mirror_manager.tokens:
+                        old_token_text = self.processor.decode([old_token_id])
+                        new_token_text = self.processor.decode([new_token_id])
+                        token_brightness = self.kv_mirror_manager.get_token_brightness(pos)
+                        
+                        self.log(f"Diffusion change at pos {pos}: '{old_token_text}' → '{new_token_text}' (brightness: {token_brightness:.2f})")
+                        
+                        # Record diffusion event
+                        self.events.append(TokenDiffusionEvent(
+                            step=generation_step,
+                            position=pos,
+                            old_token_id=old_token_id,
+                            new_token_id=new_token_id,
+                            old_token_text=old_token_text,
+                            new_token_text=new_token_text,
+                            token_brightness=token_brightness
+                        ))
+                        
+                        # Apply the change to KV Mirror
+                        self.kv_mirror_manager.replace_token(pos, new_token_id)
+                        
+                        # Also update the input_ids
+                        self.input_ids[0, pos] = new_token_id
+            else:
+                self.log(f"Diffusion made no token changes")
+                
+        except Exception as e:
+            self.log(f"Error during diffusion: {e}")
+    
     async def generate_report(self):
         """Generate a report of the test results."""
-        self.log("\n--- Culling Integration Test Report ---")
+        self.log(f"\n===== CULLING AND DIFFUSION INTEGRATION TEST REPORT =====")
         
         # Context size stats
         snapshot = self.kv_mirror_manager.snapshot()
@@ -475,10 +581,12 @@ class CullingIntegrationTest:
         # Count event types
         gen_events = [e for e in self.events if isinstance(e, TokenGenerationEvent)]
         cull_events = [e for e in self.events if isinstance(e, TokenCullingEvent)]
+        diff_events = [e for e in self.events if isinstance(e, TokenDiffusionEvent)]
         
         self.log(f"Event counts:")
         self.log(f"  Token generations: {len(gen_events)}")
         self.log(f"  Token cullings: {len(cull_events)}")
+        self.log(f"  Token diffusions: {len(diff_events)}")
         
         # Generated text
         generated_token_ids = [self.input_ids[0, i].item() for i in range(self.initial_context_length, self.input_ids.shape[1])]
@@ -519,6 +627,11 @@ class CullingIntegrationTest:
                         "type": "brightness_update",
                         **asdict(event)
                     })
+                elif isinstance(event, TokenDiffusionEvent):
+                    events_json.append({
+                        "type": "diffusion",
+                        **asdict(event)
+                    })
             
             with open(self.json_log, 'w', encoding='utf-8') as f:
                 json.dump(events_json, f, indent=2)
@@ -532,11 +645,12 @@ class CullingIntegrationTest:
 
 def parse_args():
     """Parse command line arguments."""
-    parser = argparse.ArgumentParser(description="Run a culling integration test")
+    parser = argparse.ArgumentParser(description="Run a culling and diffusion integration test")
     parser.add_argument("--context_file", type=str, help="Path to initial context file")
     parser.add_argument("--num_steps", type=int, default=100, help="Number of generation steps to run")
     parser.add_argument("--log_file", type=str, default="culling_test.log", help="Log file path")
     parser.add_argument("--json_log", type=str, default="culling_events.json", help="JSON log file path")
+    parser.add_argument("--diffusion_interval", type=int, default=10, help="Run diffusion every N steps (0 to disable)")
     return parser.parse_args()
 
 
