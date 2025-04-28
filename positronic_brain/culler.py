@@ -15,14 +15,20 @@ from .kv_mirror import KVMirror
 from .metrics import timed_histogram, inc_counter, set_gauge
 
 
+import random
+
 def select_tokens_for_cull(kv_mirror_manager: KVMirror, target_size: int) -> List[int]:
     """
-    Deterministically select tokens for culling based on brightness and target size.
+    Select tokens for culling based on brightness and target size, with random tie-breaking.
     
     The culling rules are:
     - If len < target: Cull 0 tokens
     - If len == target: Cull 1 token (lowest brightness)
     - If len > target: Cull 2 tokens per step until len == target
+    
+    When multiple tokens have the same lowest brightness value, this function
+    will randomly select from among them to ensure consistent culling behavior
+    even with brightness score collisions.
     
     Args:
         kv_mirror_manager: The KVMirror instance containing token state
@@ -58,11 +64,56 @@ def select_tokens_for_cull(kv_mirror_manager: KVMirror, target_size: int) -> Lis
             token_info = active_tokens[instance_id]
             brightness_map[position] = token_info.brightness
     
-    # Sort positions by brightness (ascending)
-    sorted_positions = sorted(brightness_map.keys(), key=lambda pos: brightness_map[pos])
+    # If no tokens with brightness information, return empty list
+    if not brightness_map:
+        return []
     
-    # Select the dimmest tokens up to num_to_cull
-    return sorted_positions[:num_to_cull]
+    # Find the minimum brightness value
+    min_brightness = min(brightness_map.values())
+    
+    # Find all tokens with the minimum brightness (candidates for culling)
+    lowest_brightness_positions = [
+        pos for pos, brightness in brightness_map.items() 
+        if brightness == min_brightness
+    ]
+    
+    # If we have more candidates than needed, randomly select
+    if len(lowest_brightness_positions) > num_to_cull:
+        print(f"[Culler] Selecting {num_to_cull} from {len(lowest_brightness_positions)} tokens with brightness {min_brightness}")
+        return random.sample(lowest_brightness_positions, num_to_cull)
+    else:
+        # If we have fewer candidates than needed, we need to find more tokens with higher brightness
+        if len(lowest_brightness_positions) < num_to_cull and len(brightness_map) > num_to_cull:
+            print(f"[Culler] Only found {len(lowest_brightness_positions)} tokens with min brightness {min_brightness}, need {num_to_cull}")
+            # Take all the minimum brightness tokens
+            positions_to_cull = lowest_brightness_positions.copy()
+            
+            # Remove the lowest brightness tokens from consideration
+            for pos in lowest_brightness_positions:
+                brightness_map.pop(pos)
+                
+            # Find the next lowest brightness value
+            if brightness_map:
+                next_min_brightness = min(brightness_map.values())
+                next_candidates = [
+                    pos for pos, brightness in brightness_map.items() 
+                    if brightness == next_min_brightness
+                ]
+                
+                # How many more tokens we need
+                remaining_needed = num_to_cull - len(positions_to_cull)
+                
+                # If we have more next-level candidates than needed, randomly select
+                if len(next_candidates) > remaining_needed:
+                    positions_to_cull.extend(random.sample(next_candidates, remaining_needed))
+                else:
+                    # Take all of the next-level candidates (up to what we need)
+                    positions_to_cull.extend(next_candidates[:remaining_needed])
+                    
+                return positions_to_cull
+        
+        # If we have the exact number of candidates or can't find more, return all the lowest brightness tokens
+        return lowest_brightness_positions
 
 
 @timed_histogram("culler_task_iteration_seconds")

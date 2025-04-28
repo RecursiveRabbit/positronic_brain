@@ -342,14 +342,19 @@ async def test_culling_with_specific_pattern(empty_kv_mirror, maintenance_handle
     
     try:
         # Define specific brightness values to control culling
-        # We'll make positions 0, 2, 4, 6, 8 have high brightness
-        # and positions 1, 3, 5, 7, 9 have low brightness
+        # We'll create a clear distinction between high and low brightness tokens
+        # with a small group having the absolute lowest brightness
         specific_brightness = {
-            0: 255.0, 1: 50.0,
-            2: 250.0, 3: 45.0,
-            4: 245.0, 5: 40.0,
-            6: 240.0, 7: 35.0,
-            8: 235.0, 9: 30.0
+            0: 255.0,  # High
+            1: 250.0,  # High
+            2: 240.0,  # High 
+            3: 230.0,  # High
+            4: 220.0,  # High
+            5: 210.0,  # High
+            6: 200.0,  # High
+            7: 190.0,  # High
+            8: 30.0,   # Low (tied for minimum)
+            9: 30.0    # Low (tied for minimum)
         }
         
         # Populate mirror with 10 tokens using specific brightness
@@ -363,6 +368,24 @@ async def test_culling_with_specific_pattern(empty_kv_mirror, maintenance_handle
         
         # Create mock model output with no attention (pure decay)
         mock_output = MockModelOutput(seq_length=10, attention_pattern='zeros')
+        
+        # Get the initial state snapshot
+        initial_snapshot = empty_kv_mirror.snapshot()
+        initial_tokens = initial_snapshot['tokens']
+        initial_kv_mirror = initial_snapshot['kv_mirror']
+        
+        # Identify positions with minimum brightness
+        brightness_map = {}
+        for pos, instance_id in initial_kv_mirror.items():
+            if instance_id in initial_tokens:
+                token_info = initial_tokens[instance_id]
+                brightness_map[pos] = token_info.brightness
+                
+        min_brightness = min(brightness_map.values())
+        min_brightness_positions = set(pos for pos, brightness in brightness_map.items() 
+                                     if brightness == min_brightness)
+        
+        print(f"\n[Test] Positions with minimum brightness ({min_brightness}): {min_brightness_positions}")
         
         # Run maintenance phase (should cull 2 tokens with lowest brightness)
         patched_kv, events = await maintenance_handler.run_phase(
@@ -383,19 +406,19 @@ async def test_culling_with_specific_pattern(empty_kv_mirror, maintenance_handle
         
         # Get remaining positions
         snapshot = empty_kv_mirror.snapshot()
-        remaining_positions = list(snapshot['kv_mirror'].keys())
+        remaining_positions = set(snapshot['kv_mirror'].keys())
+        
+        # The positions that were culled are those not in remaining_positions
+        culled_positions = set(range(10)) - remaining_positions
+        print(f"[Test] Culled positions: {culled_positions}")
         
         # Verify exactly 2 tokens were culled
         culled_tokens = culling_events[0].get('culled_tokens', [])
         assert len(culled_tokens) == 2, f"Expected 2 tokens to be culled, got {len(culled_tokens)}"
         
-        # The culled tokens should be among the dimmest positions (odd positions had lowest brightness)
-        culled_positions = [token.get('position') for token in culled_tokens]
-        # Since we cull 2 tokens at a time, we can't guarantee exactly which 2 are culled
-        # but we can verify they are among the dimmest positions
-        dim_positions = [1, 3, 5, 7, 9]
-        for pos in culled_positions:
-            assert pos in dim_positions, f"Position {pos} was culled but should not have been (not among dimmest)"
+        # Verify the culled tokens were among those with minimum brightness
+        assert culled_positions.issubset(min_brightness_positions), \
+            f"Expected culled positions {culled_positions} to be a subset of minimum brightness positions {min_brightness_positions}"
     
     finally:
         # Restore original config
