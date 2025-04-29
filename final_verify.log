@@ -1,0 +1,217 @@
+=== Compaction Verification Test Started: 2025-04-26 13:49:46 ===
+Model: TinyLlama/TinyLlama-1.1B-intermediate-step-1431k-3T
+Context file: resume_context.bak
+Num steps: 300
+Initializing components...
+Loading model: TinyLlama/TinyLlama-1.1B-intermediate-step-1431k-3T...
+Initializing KV Mirror...
+Initializing KV Patcher...
+Loaded initial context: 3486 characters
+Using model device: cuda:0
+Initial context tokenized: 1019 tokens
+Registering initial tokens with KV Mirror...
+Priming KV cache with initial context...
+KV cache initialized with 1019 tokens
+KV Mirror stats: {'active_tokens': 1019, 'total_tokens': 1019}
+Initialization complete.
+Starting compaction test for 300 steps...
+Loading diffuser model...
+Diffuser model loaded for testing
+Compactor task started.
+[Progress] 0/300 tokens generated
+[Progress] 10/300 tokens generated
+[Progress] 20/300 tokens generated
+[Progress] 30/300 tokens generated
+[Progress] 40/300 tokens generated
+[Progress] 50/300 tokens generated
+[Progress] 60/300 tokens generated
+[Progress] 70/300 tokens generated
+[Progress] 80/300 tokens generated
+[Progress] 90/300 tokens generated
+[Progress] 100/300 tokens generated
+[Progress] 110/300 tokens generated
+[Progress] 120/300 tokens generated
+[Progress] 130/300 tokens generated
+[Progress] 140/300 tokens generated
+[Progress] 150/300 tokens generated
+[Progress] 160/300 tokens generated
+[Progress] 170/300 tokens generated
+[Progress] 180/300 tokens generated
+[Progress] 190/300 tokens generated
+[Progress] 200/300 tokens generated
+[Progress] 210/300 tokens generated
+[Progress] 220/300 tokens generated
+[Progress] 230/300 tokens generated
+[Progress] 240/300 tokens generated
+[Progress] 250/300 tokens generated
+[Progress] 260/300 tokens generated
+[Progress] 270/300 tokens generated
+[Progress] 280/300 tokens generated
+[Progress] 290/300 tokens generated
+Setting shutdown event...
+Waiting for compactor to finish...
+
+
+=== VERIFICATION TEST REPORT ===
+
+Initial context length: 1019 tokens
+Final context length: 1319 tokens
+Total tokens generated: 300 tokens
+Steps completed: 300/300
+Final KV Mirror stats: {'active_tokens': 1319, 'total_tokens': 1319}
+Brightness stats for 1319 active tokens:
+  Min: 255.00
+  Max: 255.00
+  Avg: 255.00
+  Median: 255.00
+Event counts:
+  Token generations: 300
+  Token repairs: 0
+  Token cullings: 0
+
+Generated text (1006 chars):
+```
+I'm taking a break from writing, maybe you should try it?
+
+Dad's gonna have to pay for my trip, and I'm not going alone.
+
+Hey, it's been awhile... Well, after I found that melody...I guess it stuck with me for some reason.
+
+Mom's fine, so are Minnie and Mimmie. That whole thing was bonkers!
+
+I'm a little out of it right now, Dad dropped a bit of a bombshell on me... ... ... I'm psychic.
+
+I mean, I always had a feeling that there was something different about me, with the bent spoon and all...
+
+Dad called shortly after the mess calmed down, I'll just write what he said...
+
+"I'm not sure how to explain...buy you have PSI." "You're great grandfather studied it, there might be something in the basement to help explain" "Ninten, you're only 12...I wish I could handle this, but I'm tied up at work. Son, it's time for you to go on a little...journey and discover the nature of your powers. Don't take them lightly, you know...with great power and all that." "I'll deposit money into your bank account,
+```
+
+Full text (last 1000 chars):
+```
+king a break from writing, maybe you should try it?
+
+Dad's gonna have to pay for my trip, and I'm not going alone.
+
+Hey, it's been awhile... Well, after I found that melody...I guess it stuck with me for some reason.
+
+Mom's fine, so are Minnie and Mimmie. That whole thing was bonkers!
+
+I'm a little out of it right now, Dad dropped a bit of a bombshell on me... ... ... I'm psychic.
+
+I mean, I always had a feeling that there was something different about me, with the bent spoon and all...
+
+Dad called shortly after the mess calmed down, I'll just write what he said...
+
+"I'm not sure how to explain...buy you have PSI." "You're great grandfather studied it, there might be something in the basement to help explain" "Ninten, you're only 12...I wish I could handle this, but I'm tied up at work. Son, it's time for you to go on a little...journey and discover the nature of your powers. Don't take them lightly, you know...with great power and all that." "I'll deposit money into your bank account,
+```
+
+Chronological event log (first 50 events):
+Step 0: Added token 'I' (ID: 29902) at position 1019
+  Brightness: 255.00
+Step 1: Added token ''' (ID: 29915) at position 1020
+  Brightness: 255.00
+Step 2: Added token 'm' (ID: 29885) at position 1021
+  Brightness: 255.00
+Step 3: Added token 'taking' (ID: 5622) at position 1022
+  Brightness: 255.00
+Step 4: Added token 'a' (ID: 263) at position 1023
+  Brightness: 255.00
+Step 5: Added token 'break' (ID: 2867) at position 1024
+  Brightness: 255.00
+Step 6: Added token 'from' (ID: 515) at position 1025
+  Brightness: 255.00
+Step 7: Added token 'writing' (ID: 5007) at position 1026
+  Brightness: 255.00
+Step 8: Added token ',' (ID: 29892) at position 1027
+  Brightness: 255.00
+Step 9: Added token 'maybe' (ID: 5505) at position 1028
+  Brightness: 255.00
+Step 10: Added token 'you' (ID: 366) at position 1029
+  Brightness: 255.00
+Step 11: Added token 'should' (ID: 881) at position 1030
+  Brightness: 255.00
+Step 12: Added token 'try' (ID: 1018) at position 1031
+  Brightness: 255.00
+Step 13: Added token 'it' (ID: 372) at position 1032
+  Brightness: 255.00
+Step 14: Added token '?' (ID: 29973) at position 1033
+  Brightness: 255.00
+Step 15: Added token '
+' (ID: 13) at position 1034
+  Brightness: 255.00
+Step 16: Added token '
+' (ID: 13) at position 1035
+  Brightness: 255.00
+Step 17: Added token 'D' (ID: 29928) at position 1036
+  Brightness: 255.00
+Step 18: Added token 'ad' (ID: 328) at position 1037
+  Brightness: 255.00
+Step 19: Added token ''' (ID: 29915) at position 1038
+  Brightness: 255.00
+Step 20: Added token 's' (ID: 29879) at position 1039
+  Brightness: 255.00
+Step 21: Added token 'g' (ID: 330) at position 1040
+  Brightness: 255.00
+Step 22: Added token 'onna' (ID: 11586) at position 1041
+  Brightness: 255.00
+Step 23: Added token 'have' (ID: 505) at position 1042
+  Brightness: 255.00
+Step 24: Added token 'to' (ID: 304) at position 1043
+  Brightness: 255.00
+Step 25: Added token 'pay' (ID: 5146) at position 1044
+  Brightness: 255.00
+Step 26: Added token 'for' (ID: 363) at position 1045
+  Brightness: 255.00
+Step 27: Added token 'my' (ID: 590) at position 1046
+  Brightness: 255.00
+Step 28: Added token 'trip' (ID: 17487) at position 1047
+  Brightness: 255.00
+Step 29: Added token ',' (ID: 29892) at position 1048
+  Brightness: 255.00
+Step 30: Added token 'and' (ID: 322) at position 1049
+  Brightness: 255.00
+Step 31: Added token 'I' (ID: 306) at position 1050
+  Brightness: 255.00
+Step 32: Added token ''' (ID: 29915) at position 1051
+  Brightness: 255.00
+Step 33: Added token 'm' (ID: 29885) at position 1052
+  Brightness: 255.00
+Step 34: Added token 'not' (ID: 451) at position 1053
+  Brightness: 255.00
+Step 35: Added token 'going' (ID: 2675) at position 1054
+  Brightness: 255.00
+Step 36: Added token 'alone' (ID: 7432) at position 1055
+  Brightness: 255.00
+Step 37: Added token '.' (ID: 29889) at position 1056
+  Brightness: 255.00
+Step 38: Added token '
+' (ID: 13) at position 1057
+  Brightness: 255.00
+Step 39: Added token '
+' (ID: 13) at position 1058
+  Brightness: 255.00
+Step 40: Added token 'H' (ID: 29950) at position 1059
+  Brightness: 255.00
+Step 41: Added token 'ey' (ID: 1032) at position 1060
+  Brightness: 255.00
+Step 42: Added token ',' (ID: 29892) at position 1061
+  Brightness: 255.00
+Step 43: Added token 'it' (ID: 372) at position 1062
+  Brightness: 255.00
+Step 44: Added token ''' (ID: 29915) at position 1063
+  Brightness: 255.00
+Step 45: Added token 's' (ID: 29879) at position 1064
+  Brightness: 255.00
+Step 46: Added token 'been' (ID: 1063) at position 1065
+  Brightness: 255.00
+Step 47: Added token 'a' (ID: 263) at position 1066
+  Brightness: 255.00
+Step 48: Added token 'while' (ID: 8000) at position 1067
+  Brightness: 255.00
+Step 49: Added token '...' (ID: 856) at position 1068
+  Brightness: 255.00
+Detailed event log written to final_events.json
+
+=== END OF REPORT ===

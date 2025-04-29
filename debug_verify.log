@@ -1,0 +1,337 @@
+=== Compaction Verification Test Started: 2025-04-26 16:55:28 ===
+Model: TinyLlama/TinyLlama-1.1B-intermediate-step-1431k-3T
+Context file: resume_context.bak
+Num steps: 50
+Initializing components...
+Loading model: TinyLlama/TinyLlama-1.1B-intermediate-step-1431k-3T...
+Initializing KV Mirror...
+Initializing KV Patcher...
+Loaded initial context: 3486 characters
+Using model device: cuda:0
+Initial context tokenized: 1019 tokens
+Registering initial tokens with KV Mirror...
+Priming KV cache with initial context...
+KV cache initialized with 1019 tokens
+KV Mirror stats: {'active_tokens': 1019, 'total_tokens': 1019}
+Initialization complete.
+Starting compaction test for 50 steps...
+Loading diffuser model...
+Diffuser model loaded for testing
+Compactor task started.
+[Step 0] Error in token generation: module 'positronic_brain.config' has no attribute 'BRIGHTNESS_ALPHA'
+Setting shutdown event...
+Waiting for compactor to finish...
+
+
+=== VERIFICATION TEST REPORT ===
+
+Initial context length: 1019 tokens
+Final context length: 1019 tokens
+Total tokens generated: 0 tokens
+Steps completed: 1/50
+Final KV Mirror stats: {'active_tokens': 1019, 'total_tokens': 1019}
+Brightness stats for 1019 active tokens:
+  Min: 255.00
+  Max: 255.00
+  Avg: 255.00
+  Median: 255.00
+Event counts:
+  Token generations: 0
+  Token repairs: 0
+  Token cullings: 0
+
+Generated text (0 chars):
+```
+
+```
+
+Full text (last 1000 chars):
+```
+rtle Wax. The trunk opens easily enough, and there's an old leather journal inside! I open it and-! "What the heck?! I can barely read this!" A few parts are more clear. "PSI is the mental energy that lies dormant is most intelligent life-forms. I believe, that it needs an emotional catalyst to be utilized...like love. It can be used to heal...and to harm. It lies dormant in most people, but I believe there are ways to awaken it. I'll record the results of my experiments here...I have to, for the sake of mankind. Password: Where is the God's tail? That which was left behind by the ship that soars the heavens"
+
+That helps kind of, I'd better hold onto this-hey! You stupid rat! That's a weird looking rat...almost like it's possessed. A few whacks with my plastic bat later,and it scurried off, dropping the journal.
+
+I carry the journal upstairs...I'm not sure where I'm going our why, but Dad said I have to go on a journey. I'm not a violent kid, but I'll do anything to protect my family.
+
+```
+
+Chronological event log (first 50 events):
+Detailed event log written to debug_events.json
+
+=== END OF REPORT ===
+=== Compaction Verification Test Started: 2025-04-26 16:56:22 ===
+Model: TinyLlama/TinyLlama-1.1B-intermediate-step-1431k-3T
+Context file: resume_context.bak
+Num steps: 50
+Initializing components...
+Loading model: TinyLlama/TinyLlama-1.1B-intermediate-step-1431k-3T...
+Initializing KV Mirror...
+Initializing KV Patcher...
+Loaded initial context: 3486 characters
+Using model device: cuda:0
+Initial context tokenized: 1019 tokens
+Registering initial tokens with KV Mirror...
+Priming KV cache with initial context...
+KV cache initialized with 1019 tokens
+KV Mirror stats: {'active_tokens': 1019, 'total_tokens': 1019}
+Initialization complete.
+Starting compaction test for 50 steps...
+Loading diffuser model...
+Diffuser model loaded for testing
+Compactor task started.
+[Step 0] Error in token generation: update_brightness_scores() got an unexpected keyword argument 'alpha'
+Setting shutdown event...
+Waiting for compactor to finish...
+
+
+=== VERIFICATION TEST REPORT ===
+
+Initial context length: 1019 tokens
+Final context length: 1019 tokens
+Total tokens generated: 0 tokens
+Steps completed: 1/50
+Final KV Mirror stats: {'active_tokens': 1019, 'total_tokens': 1019}
+Brightness stats for 1019 active tokens:
+  Min: 255.00
+  Max: 255.00
+  Avg: 255.00
+  Median: 255.00
+Event counts:
+  Token generations: 0
+  Token repairs: 0
+  Token cullings: 0
+
+Generated text (0 chars):
+```
+
+```
+
+Full text (last 1000 chars):
+```
+rtle Wax. The trunk opens easily enough, and there's an old leather journal inside! I open it and-! "What the heck?! I can barely read this!" A few parts are more clear. "PSI is the mental energy that lies dormant is most intelligent life-forms. I believe, that it needs an emotional catalyst to be utilized...like love. It can be used to heal...and to harm. It lies dormant in most people, but I believe there are ways to awaken it. I'll record the results of my experiments here...I have to, for the sake of mankind. Password: Where is the God's tail? That which was left behind by the ship that soars the heavens"
+
+That helps kind of, I'd better hold onto this-hey! You stupid rat! That's a weird looking rat...almost like it's possessed. A few whacks with my plastic bat later,and it scurried off, dropping the journal.
+
+I carry the journal upstairs...I'm not sure where I'm going our why, but Dad said I have to go on a journey. I'm not a violent kid, but I'll do anything to protect my family.
+
+```
+
+Chronological event log (first 50 events):
+Detailed event log written to debug_events.json
+
+=== END OF REPORT ===
+=== Compaction Verification Test Started: 2025-04-26 16:58:31 ===
+Model: TinyLlama/TinyLlama-1.1B-intermediate-step-1431k-3T
+Context file: resume_context.bak
+Num steps: 50
+Initializing components...
+Loading model: TinyLlama/TinyLlama-1.1B-intermediate-step-1431k-3T...
+Initializing KV Mirror...
+Initializing KV Patcher...
+Loaded initial context: 3486 characters
+Using model device: cuda:0
+Initial context tokenized: 1019 tokens
+Registering initial tokens with KV Mirror...
+Priming KV cache with initial context...
+KV cache initialized with 1019 tokens
+KV Mirror stats: {'active_tokens': 1019, 'total_tokens': 1019}
+Initialization complete.
+Starting compaction test for 50 steps...
+Loading diffuser model...
+Diffuser model loaded for testing
+Compactor task started.
+[Step 0] Updated brightness scores
+[Progress] 0/50 tokens generated
+[Step 1] Updated brightness scores
+[Step 2] Updated brightness scores
+[Step 3] Updated brightness scores
+[Step 4] Updated brightness scores
+[Step 5] Updated brightness scores
+[Step 6] Updated brightness scores
+[Step 7] Updated brightness scores
+[Step 8] Updated brightness scores
+[Step 9] Updated brightness scores
+[Step 10] Updated brightness scores
+[Progress] 10/50 tokens generated
+[Step 11] Updated brightness scores
+[Step 12] Updated brightness scores
+[Step 13] Updated brightness scores
+[Step 14] Updated brightness scores
+[Step 15] Updated brightness scores
+[Step 16] Updated brightness scores
+[Step 17] Updated brightness scores
+[Step 18] Updated brightness scores
+[Step 19] Updated brightness scores
+[Step 20] Updated brightness scores
+[Progress] 20/50 tokens generated
+[Step 21] Updated brightness scores
+[Step 22] Updated brightness scores
+[Step 23] Updated brightness scores
+[Step 24] Updated brightness scores
+[Step 25] Updated brightness scores
+[Step 26] Updated brightness scores
+[Step 27] Updated brightness scores
+[Step 28] Updated brightness scores
+[Step 29] Updated brightness scores
+[Step 30] Updated brightness scores
+[Progress] 30/50 tokens generated
+[Step 31] Updated brightness scores
+[Step 32] Updated brightness scores
+[Step 33] Updated brightness scores
+[Step 34] Updated brightness scores
+[Step 35] Updated brightness scores
+[Step 36] Updated brightness scores
+[Step 37] Updated brightness scores
+[Step 38] Updated brightness scores
+[Step 39] Updated brightness scores
+[Step 40] Updated brightness scores
+[Progress] 40/50 tokens generated
+[Step 41] Updated brightness scores
+[Step 42] Updated brightness scores
+[Step 43] Updated brightness scores
+[Step 44] Updated brightness scores
+[Step 45] Updated brightness scores
+[Step 46] Updated brightness scores
+[Step 47] Updated brightness scores
+[Step 48] Updated brightness scores
+[Step 49] Updated brightness scores
+Setting shutdown event...
+Waiting for compactor to finish...
+
+
+=== VERIFICATION TEST REPORT ===
+
+Initial context length: 1019 tokens
+Final context length: 1069 tokens
+Total tokens generated: 50 tokens
+Steps completed: 50/50
+Final KV Mirror stats: {'active_tokens': 1069, 'total_tokens': 1069}
+Brightness stats for 1069 active tokens:
+  Min: 155.00
+  Max: 255.00
+  Avg: 157.50
+  Median: 155.00
+Event counts:
+  Token generations: 50
+  Token repairs: 0
+  Token cullings: 0
+
+Generated text (193 chars):
+```
+I turn on the TV, and check out the news. There's a story of a missing boy, and a woman who ran away from her abusive boyfriend. I watch the girl walk through the woods, as she searches for her
+```
+
+Full text (last 1000 chars):
+```
+gy that lies dormant is most intelligent life-forms. I believe, that it needs an emotional catalyst to be utilized...like love. It can be used to heal...and to harm. It lies dormant in most people, but I believe there are ways to awaken it. I'll record the results of my experiments here...I have to, for the sake of mankind. Password: Where is the God's tail? That which was left behind by the ship that soars the heavens"
+
+That helps kind of, I'd better hold onto this-hey! You stupid rat! That's a weird looking rat...almost like it's possessed. A few whacks with my plastic bat later,and it scurried off, dropping the journal.
+
+I carry the journal upstairs...I'm not sure where I'm going our why, but Dad said I have to go on a journey. I'm not a violent kid, but I'll do anything to protect my family.
+I turn on the TV, and check out the news. There's a story of a missing boy, and a woman who ran away from her abusive boyfriend. I watch the girl walk through the woods, as she searches for her
+```
+
+Chronological event log (first 50 events):
+Step 0: Added token 'I' (ID: 29902) at position 1019
+  Brightness: 255.00
+Step 1: Added token 'turn' (ID: 2507) at position 1020
+  Brightness: 255.00
+Step 2: Added token 'on' (ID: 373) at position 1021
+  Brightness: 255.00
+Step 3: Added token 'the' (ID: 278) at position 1022
+  Brightness: 255.00
+Step 4: Added token 'TV' (ID: 5648) at position 1023
+  Brightness: 255.00
+Step 5: Added token ',' (ID: 29892) at position 1024
+  Brightness: 255.00
+Step 6: Added token 'and' (ID: 322) at position 1025
+  Brightness: 255.00
+Step 7: Added token 'check' (ID: 1423) at position 1026
+  Brightness: 255.00
+Step 8: Added token 'out' (ID: 714) at position 1027
+  Brightness: 255.00
+Step 9: Added token 'the' (ID: 278) at position 1028
+  Brightness: 255.00
+Step 10: Added token 'news' (ID: 9763) at position 1029
+  Brightness: 255.00
+Step 11: Added token '.' (ID: 29889) at position 1030
+  Brightness: 255.00
+Step 12: Added token 'There' (ID: 1670) at position 1031
+  Brightness: 255.00
+Step 13: Added token ''' (ID: 29915) at position 1032
+  Brightness: 255.00
+Step 14: Added token 's' (ID: 29879) at position 1033
+  Brightness: 255.00
+Step 15: Added token 'a' (ID: 263) at position 1034
+  Brightness: 255.00
+Step 16: Added token 'story' (ID: 5828) at position 1035
+  Brightness: 255.00
+Step 17: Added token 'of' (ID: 310) at position 1036
+  Brightness: 255.00
+Step 18: Added token 'a' (ID: 263) at position 1037
+  Brightness: 255.00
+Step 19: Added token 'missing' (ID: 4567) at position 1038
+  Brightness: 255.00
+Step 20: Added token 'boy' (ID: 8023) at position 1039
+  Brightness: 255.00
+Step 21: Added token ',' (ID: 29892) at position 1040
+  Brightness: 255.00
+Step 22: Added token 'and' (ID: 322) at position 1041
+  Brightness: 255.00
+Step 23: Added token 'a' (ID: 263) at position 1042
+  Brightness: 255.00
+Step 24: Added token 'woman' (ID: 6114) at position 1043
+  Brightness: 255.00
+Step 25: Added token 'who' (ID: 1058) at position 1044
+  Brightness: 255.00
+Step 26: Added token 'ran' (ID: 6350) at position 1045
+  Brightness: 255.00
+Step 27: Added token 'away' (ID: 3448) at position 1046
+  Brightness: 255.00
+Step 28: Added token 'from' (ID: 515) at position 1047
+  Brightness: 255.00
+Step 29: Added token 'her' (ID: 902) at position 1048
+  Brightness: 255.00
+Step 30: Added token 'ab' (ID: 633) at position 1049
+  Brightness: 255.00
+Step 31: Added token 'us' (ID: 375) at position 1050
+  Brightness: 255.00
+Step 32: Added token 'ive' (ID: 573) at position 1051
+  Brightness: 255.00
+Step 33: Added token 'boy' (ID: 8023) at position 1052
+  Brightness: 255.00
+Step 34: Added token 'friend' (ID: 18326) at position 1053
+  Brightness: 255.00
+Step 35: Added token '.' (ID: 29889) at position 1054
+  Brightness: 255.00
+Step 36: Added token 'I' (ID: 306) at position 1055
+  Brightness: 255.00
+Step 37: Added token 'watch' (ID: 6505) at position 1056
+  Brightness: 255.00
+Step 38: Added token 'the' (ID: 278) at position 1057
+  Brightness: 255.00
+Step 39: Added token 'girl' (ID: 7826) at position 1058
+  Brightness: 255.00
+Step 40: Added token 'walk' (ID: 6686) at position 1059
+  Brightness: 255.00
+Step 41: Added token 'through' (ID: 1549) at position 1060
+  Brightness: 255.00
+Step 42: Added token 'the' (ID: 278) at position 1061
+  Brightness: 255.00
+Step 43: Added token 'woods' (ID: 25013) at position 1062
+  Brightness: 255.00
+Step 44: Added token ',' (ID: 29892) at position 1063
+  Brightness: 255.00
+Step 45: Added token 'as' (ID: 408) at position 1064
+  Brightness: 255.00
+Step 46: Added token 'she' (ID: 1183) at position 1065
+  Brightness: 255.00
+Step 47: Added token 'searches' (ID: 29645) at position 1066
+  Brightness: 255.00
+Step 48: Added token 'for' (ID: 363) at position 1067
+  Brightness: 255.00
+Step 49: Added token 'her' (ID: 902) at position 1068
+  Brightness: 255.00
+Detailed event log written to debug_events.json
+
+=== END OF REPORT ===

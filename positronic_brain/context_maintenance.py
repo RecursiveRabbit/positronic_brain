@@ -191,30 +191,23 @@ class ContextMaintenance:
                 print(f"[Maintenance] Selecting {len(selected_to_repair)} tokens for repair at positions: {positions_to_repair}", file=sys.stderr)
 
                 # Get the full sequence input IDs from current_input_ids
-                # We need to convert the tensor to a flat list/tensor for compute_diff
-                input_ids = current_input_ids[0].detach().cpu()  # Shape: [seq_len]
-
-                # Get embeddings for all tokens in the sequence
-                # For this synchronous version, we'll extract embeddings directly from the model
-                with torch.no_grad():
-                    # Use the model's embedding layer to get embeddings for all tokens
-                    input_embeddings = self.main_model.get_input_embeddings()(current_input_ids)
+                # We need this for the token ID-based diffuser
+                input_ids = current_input_ids[0].detach()  # Shape: [seq_len]
 
                 # Create a brightness map - normalize brightness values to 0-1 range for diffuser
                 brightness_map = torch.zeros(current_input_ids.shape[1], device=current_input_ids.device)
                 for pos, instance_id in kv_mirror.items():
                     if pos < brightness_map.shape[0] and instance_id in active_tokens:
-                        # Normalize from 0-255 to 0-1 range
-                        brightness_map[pos] = active_tokens[instance_id].brightness / 255.0
+                        # Store raw brightness values (0-255 range) - will be normalized inside compute_diff
+                        brightness_map[pos] = active_tokens[instance_id].brightness
 
                 try:
-                    # Call compute_diff with the repair indices
+                    # Call compute_diff with the token IDs, attention mask, brightness map, and repair indices
                     diff_list = await compute_diff(
                         diffuser_model=self.diffuser,
-                        input_embeddings=input_embeddings,
+                        original_input_ids=input_ids,
                         attention_mask=current_attention_mask,
                         brightness_map=brightness_map,
-                        original_input_ids=input_ids,
                         repair_indices=positions_to_repair
                     )
                     print(f"[Maintenance] compute_diff returned {len(diff_list)} changes", file=sys.stderr)

@@ -174,8 +174,8 @@ def test_brightness_gain(kv_mirror_fixture):
     gain_coefficient = 10.0
     
     # Expected attention gains
-    expected_gain_id1 = int(0.5 * gain_coefficient)  # 5
-    expected_gain_id2 = int(0.2 * gain_coefficient)  # 2
+    expected_gain_id1 = 0.5 * gain_coefficient  # 5.0
+    expected_gain_id2 = 0.2 * gain_coefficient  # 2.0
     
     # Update brightness with attention
     result = update_brightness_scores(
@@ -194,9 +194,9 @@ def test_brightness_gain(kv_mirror_fixture):
     assert result.get('success', 0) == 2, "Expected 2 successful brightness updates"
     
     # Assert brightness increased correctly
-    assert tokens[id1].brightness == 100.0 + expected_gain_id1, \
+    assert abs(tokens[id1].brightness - (100.0 + expected_gain_id1)) < 0.0001, \
            f"Expected token 1 brightness to increase from 100.0 to {100.0 + expected_gain_id1}"
-    assert tokens[id2].brightness == 50.0 + expected_gain_id2, \
+    assert abs(tokens[id2].brightness - (50.0 + expected_gain_id2)) < 0.0001, \
            f"Expected token 2 brightness to increase from 50.0 to {50.0 + expected_gain_id2}"
 
 def test_brightness_combined(kv_mirror_fixture):
@@ -223,8 +223,8 @@ def test_brightness_combined(kv_mirror_fixture):
     gain_coefficient = 10.0
     
     # Expected brightness changes
-    expected_gain_id1 = int(0.5 * gain_coefficient)  # 5
-    expected_gain_id2 = int(0.2 * gain_coefficient)  # 2
+    expected_gain_id1 = 0.5 * gain_coefficient  # 5.0
+    expected_gain_id2 = 0.2 * gain_coefficient  # 2.0
     
     # Update brightness with attention and decay
     result = update_brightness_scores(
@@ -243,9 +243,9 @@ def test_brightness_combined(kv_mirror_fixture):
     assert result.get('success', 0) == 2, "Expected 2 successful brightness updates"
     
     # Assert brightness updated correctly (decay + gain)
-    assert tokens[id1].brightness == 100.0 - decay_rate + expected_gain_id1, \
+    assert abs(tokens[id1].brightness - (100.0 - decay_rate + expected_gain_id1)) < 0.0001, \
            f"Expected token 1 brightness to change from 100.0 to {100.0 - decay_rate + expected_gain_id1}"
-    assert tokens[id2].brightness == 50.0 - decay_rate + expected_gain_id2, \
+    assert abs(tokens[id2].brightness - (50.0 - decay_rate + expected_gain_id2)) < 0.0001, \
            f"Expected token 2 brightness to change from 50.0 to {50.0 - decay_rate + expected_gain_id2}"
 
 def test_brightness_clamp_lower(kv_mirror_fixture):

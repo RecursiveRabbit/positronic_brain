@@ -130,9 +130,10 @@ def truncate_kv_cache(past_key_values, max_len):
 def execute_forward_pass(
     model: AutoModelForCausalLM,
     input_ids: torch.Tensor,
-    attention_mask: torch.Tensor,
+    attention_mask: Optional[torch.Tensor],
     past_key_values: Optional[Tuple] = None,
-    position_ids: Optional[torch.Tensor] = None
+    position_ids: Optional[torch.Tensor] = None,
+    get_attentions: bool = False
 ) -> Tuple[torch.Tensor, Optional[Tuple], Any]:  # logits, new_kv_cache, attentions
     """
     Executes a forward pass through the model.
@@ -151,13 +152,21 @@ def execute_forward_pass(
         - attentions: Attention weights (or None).
     """
     try:
+        # Safety guard: when using past_key_values, only new tokens should be passed in input_ids
+        if past_key_values is not None and input_ids.shape[1] > 1:
+            raise ValueError("When supplying past_key_values feed only the new token(s).")
+            
+        # Defensive check to ensure attention_mask matches input_ids length if provided
+        if attention_mask is not None and attention_mask.shape[1] != input_ids.shape[1]:
+            attention_mask = attention_mask[:, :input_ids.shape[1]]
+            
         outputs = model(
             input_ids=input_ids,
             attention_mask=attention_mask,
             past_key_values=past_key_values,
             position_ids=position_ids,  # Add position_ids parameter
             use_cache=True,
-            output_attentions=True  # Re-enabled for brightness-guided diffusion to work
+            output_attentions=get_attentions  # Configurable based on new parameter
         )
 
         logits = outputs.logits

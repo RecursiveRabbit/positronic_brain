@@ -218,29 +218,30 @@ def repair_token(
     return predict_replacement(diffuser_model, hidden_states, attention_mask, repair_index, original_token_id)
 
 
+# Maximum window size for diffuser models like DistilBERT
+MAX_DIFFUSER_WINDOW = 512  # 512 for DistilBERT
+
 @timed_histogram("diffuser_compute_diff_seconds")
-def compute_diff(
+async def compute_diff(
     diffuser_model: DiffuserModel,
-    input_embeddings: torch.Tensor,
+    original_input_ids: torch.Tensor,
     attention_mask: torch.Tensor,
     brightness_map: torch.Tensor,
-    original_input_ids: torch.Tensor,
     repair_indices: List[int] = None
 ) -> List[Tuple[int, int, int]]:
     """
-    Compute a diff of token repair suggestions using brightness-guided noise diffusion.
+    Compute a diff of token repair suggestions using brightness-guided masking.
     
-    This implements a brightness-based embedding noise approach where:
+    This implements a brightness-based masked language modeling approach where:
     1. Tokens with normalized brightness >= BRIGHTNESS_LOCK_THRESHOLD are locked (kept unchanged).
-    2. Lower brightness tokens have noise added proportional to (1 - brightness).
-    3. The noisy embeddings are processed by the MLM to predict replacements.
+    2. Lower brightness tokens are masked using the MLM mask token.
+    3. The masked inputs are processed by the MLM to predict replacements.
     
     Args:
         diffuser_model: The DiffuserModel instance
-        input_embeddings: Input embeddings tensor for the sequence (shape: [1, seq_len, embed_dim])
+        original_input_ids: Original token IDs for the sequence (shape: [1, seq_len] or [seq_len])
         attention_mask: Attention mask tensor (shape: [1, seq_len])
         brightness_map: Normalized brightness values (0-1) for each token (shape: [1, seq_len] or [seq_len])
-        original_input_ids: Original token IDs for the sequence (shape: [1, seq_len] or [seq_len])
         repair_indices: Optional list of positions to repair. If None, all positions below
                        the brightness threshold will be considered for repair.
         
@@ -259,8 +260,12 @@ def compute_diff(
     device = diffuser_model.device
     
     # Ensure inputs are on the correct device
-    input_embeddings = input_embeddings.to(device)
     attention_mask = attention_mask.to(device)
+    
+    # Ensure original_input_ids has batch dimension and is on correct device
+    if original_input_ids.dim() == 1:
+        original_input_ids = original_input_ids.unsqueeze(0)  # Add batch dimension
+    original_input_ids = original_input_ids.to(device)
     
     # Ensure brightness map has correct shape and device
     # Normalize brightness from [0-255] to [0-1] if needed
@@ -270,15 +275,43 @@ def compute_diff(
     
     if b.dim() == 1:
         b = b.unsqueeze(0)  # Ensure [1, seq_len]
-    b = b.unsqueeze(-1)  # Shape: [1, seq_len, 1] for broadcasting
     
-    # Ensure original_input_ids is on the correct device
-    original_input_ids = original_input_ids.to(device)
+    seq_len = original_input_ids.shape[1]
     
-    seq_len = input_embeddings.shape[1]
+    # Check if sequence length exceeds the diffuser model window limit
+    if seq_len > MAX_DIFFUSER_WINDOW:
+        print(f"[Diffuser] Sequence length {seq_len} exceeds diffuser model window size {MAX_DIFFUSER_WINDOW}. Using sliding window.")
+        # Calculate window start position (take the last MAX_DIFFUSER_WINDOW tokens)
+        start_pos = max(0, seq_len - MAX_DIFFUSER_WINDOW)
+        
+        # Create windowed versions of inputs
+        window_input_ids = original_input_ids[:, start_pos:]
+        window_attention_mask = attention_mask[:, start_pos:]
+        window_brightness = b[:, start_pos:] if b.dim() > 1 else b[start_pos:]
+        
+        # Map repair_indices to window positions
+        if repair_indices is not None:
+            window_repair_indices = [i - start_pos for i in repair_indices if i >= start_pos]
+            if len(window_repair_indices) < len(repair_indices):
+                print(f"[Diffuser] {len(repair_indices) - len(window_repair_indices)} repair positions were outside the sliding window")
+        else:
+            window_repair_indices = None
+            
+        # Use windowed variables from here on
+        original_input_ids = window_input_ids
+        attention_mask = window_attention_mask
+        b = window_brightness
+        repair_indices = window_repair_indices
+        seq_len = original_input_ids.shape[1]  # Update sequence length to window size
+        window_offset = start_pos  # Store for position remapping later
+    else:
+        window_offset = 0  # No windowing applied
+    
+    # Create a masked version of input_ids
+    masked_input_ids = original_input_ids.clone()
     
     # Process tokens based on repair_indices or brightness
-    repair_tokens = []
+    repair_positions = []
     
     # If repair_indices is provided, only consider those positions
     positions_to_check = repair_indices if repair_indices is not None else range(seq_len)
@@ -289,59 +322,52 @@ def compute_diff(
             print(f"[Diffuser WARNING] Repair index {pos} out of bounds for sequence length {seq_len}")
             continue
             
-        b_val = brightness_map[0, pos].item() if brightness_map.dim() > 1 else brightness_map[pos].item()
+        b_val = b[0, pos].item() if b.dim() > 1 else b[pos].item()
         
         # Skip positions where brightness >= lock threshold (these tokens are "frozen")
         if b_val >= config.BRIGHTNESS_LOCK_THRESHOLD:
             continue
             
-        # For tokens below the lock threshold, we'll apply noise proportional to (1-brightness)
-        # and predict replacements
-        original_id = original_input_ids[0, pos].item() if original_input_ids.dim() > 1 else original_input_ids[pos].item()
-        repair_tokens.append((pos, b_val, original_id))
+        # For tokens below the lock threshold, mask them for MLM prediction
+        original_id = original_input_ids[0, pos].item()
+        masked_input_ids[0, pos] = diffuser_model.mask_token_id  # Replace with mask token
+        repair_positions.append(pos)
     
     try:
-        # 2. Threshold Lock Mask (1.0 for locked, 0.0 for modifiable)
-        lock_mask = (b >= config.BRIGHTNESS_LOCK_THRESHOLD).float()
+        if not repair_positions:
+            print(f"[Diffuser] No tokens to repair - all tokens are above the brightness threshold")
+            return []
+            
+        print(f"[Diffuser] Masked {len(repair_positions)}/{seq_len} tokens for potential repair")
         
-        # 3. Compute Noise Scale (sigma_i = alpha * (1-b_i) * (1-lock_mask_i))
-        noise_scale = config.BRIGHTNESS_NOISE_ALPHA * (1.0 - b) * (1.0 - lock_mask)
-        
-        # Log some stats about the noise scale
-        num_locked = int(lock_mask.sum().item())
-        num_tokens = lock_mask.numel()
-        max_noise = float(noise_scale.max().item())
-        avg_noise = float(noise_scale.mean().item())
-        print(f"[Diffuser] Noise diffusion: {num_locked}/{num_tokens} tokens locked. "  
-              f"Max noise scale: {max_noise:.4f}, Avg: {avg_noise:.4f}")
-              
-        # 4. Inject Noise
-        noise = torch.randn_like(input_embeddings)
-        noisy_inputs = input_embeddings + noise_scale * noise
-        
-        # 5. MLM Forward Pass
+        # Execute the MLM model with masked inputs
         with torch.no_grad():
             outputs = diffuser_model.model(
-                inputs_embeds=noisy_inputs,
+                input_ids=masked_input_ids,
                 attention_mask=attention_mask
             )
             
-        # 6. Predict Tokens & Apply Lock
+        # Get logits and predicted tokens
         logits = outputs.logits  # Shape: [1, seq_len, vocab_size]
-        predicted_ids = torch.argmax(logits, dim=-1)  # Shape: [1, seq_len]
         
-        # Ensure locked tokens remain unchanged (use original_input_ids)
-        lock_mask_bool = lock_mask.squeeze(-1).bool()  # Shape: [1, seq_len]
-        predicted_ids[lock_mask_bool] = original_input_ids[lock_mask_bool]
-        
-        # 7. Compute Diff
-        original_ids_list = original_input_ids[0].tolist()
-        predicted_ids_list = predicted_ids[0].tolist()
-        
-        for i in range(len(original_ids_list)):
-            # Only report diffs for *modifiable* tokens that actually changed
-            if lock_mask[0, i, 0].item() == 0.0 and original_ids_list[i] != predicted_ids_list[i]:
-                diff_list.append((i, original_ids_list[i], predicted_ids_list[i]))
+        # Compute diff only for masked positions
+        for pos in repair_positions:
+            original_id = original_input_ids[0, pos].item()
+            
+            # Get the token with highest probability for this position
+            token_logits = logits[0, pos]
+            predicted_id = torch.argmax(token_logits).item()
+            
+            # Only add to diff if prediction differs from original
+            if predicted_id != original_id:
+                # Optional: get prediction probability for logging
+                probs = torch.softmax(token_logits, dim=0)
+                prob = probs[predicted_id].item()
+                
+                # Remap position to original sequence position if windowing was applied
+                orig_pos = pos + window_offset
+                print(f"[Diffuser] Pos {orig_pos}: {original_id} -> {predicted_id} (prob: {prob:.4f})")
+                diff_list.append((orig_pos, original_id, predicted_id))
     
     except Exception as e:
         inc_counter("diffuser_compute_diff_error")

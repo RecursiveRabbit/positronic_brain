@@ -1,0 +1,2402 @@
+[
+  {
+    "type": "generation",
+    "step": 0,
+    "token_id": 29902,
+    "token_text": "I",
+    "position": 1019,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 1,
+    "token_id": 29915,
+    "token_text": "'",
+    "position": 1020,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 2,
+    "token_id": 29885,
+    "token_text": "m",
+    "position": 1021,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 3,
+    "token_id": 5622,
+    "token_text": "taking",
+    "position": 1022,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 4,
+    "token_id": 263,
+    "token_text": "a",
+    "position": 1023,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 5,
+    "token_id": 2867,
+    "token_text": "break",
+    "position": 1024,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 6,
+    "token_id": 515,
+    "token_text": "from",
+    "position": 1025,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 7,
+    "token_id": 5007,
+    "token_text": "writing",
+    "position": 1026,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 8,
+    "token_id": 29892,
+    "token_text": ",",
+    "position": 1027,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 9,
+    "token_id": 5505,
+    "token_text": "maybe",
+    "position": 1028,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 10,
+    "token_id": 366,
+    "token_text": "you",
+    "position": 1029,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 11,
+    "token_id": 881,
+    "token_text": "should",
+    "position": 1030,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 12,
+    "token_id": 1018,
+    "token_text": "try",
+    "position": 1031,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 13,
+    "token_id": 372,
+    "token_text": "it",
+    "position": 1032,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 14,
+    "token_id": 29973,
+    "token_text": "?",
+    "position": 1033,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 15,
+    "token_id": 13,
+    "token_text": "\n",
+    "position": 1034,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 16,
+    "token_id": 13,
+    "token_text": "\n",
+    "position": 1035,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 17,
+    "token_id": 29928,
+    "token_text": "D",
+    "position": 1036,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 18,
+    "token_id": 328,
+    "token_text": "ad",
+    "position": 1037,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 19,
+    "token_id": 29915,
+    "token_text": "'",
+    "position": 1038,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 20,
+    "token_id": 29879,
+    "token_text": "s",
+    "position": 1039,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 21,
+    "token_id": 330,
+    "token_text": "g",
+    "position": 1040,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 22,
+    "token_id": 11586,
+    "token_text": "onna",
+    "position": 1041,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 23,
+    "token_id": 505,
+    "token_text": "have",
+    "position": 1042,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 24,
+    "token_id": 304,
+    "token_text": "to",
+    "position": 1043,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 25,
+    "token_id": 5146,
+    "token_text": "pay",
+    "position": 1044,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 26,
+    "token_id": 363,
+    "token_text": "for",
+    "position": 1045,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 27,
+    "token_id": 590,
+    "token_text": "my",
+    "position": 1046,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 28,
+    "token_id": 17487,
+    "token_text": "trip",
+    "position": 1047,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 29,
+    "token_id": 29892,
+    "token_text": ",",
+    "position": 1048,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 30,
+    "token_id": 322,
+    "token_text": "and",
+    "position": 1049,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 31,
+    "token_id": 306,
+    "token_text": "I",
+    "position": 1050,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 32,
+    "token_id": 29915,
+    "token_text": "'",
+    "position": 1051,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 33,
+    "token_id": 29885,
+    "token_text": "m",
+    "position": 1052,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 34,
+    "token_id": 451,
+    "token_text": "not",
+    "position": 1053,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 35,
+    "token_id": 2675,
+    "token_text": "going",
+    "position": 1054,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 36,
+    "token_id": 7432,
+    "token_text": "alone",
+    "position": 1055,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 37,
+    "token_id": 29889,
+    "token_text": ".",
+    "position": 1056,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 38,
+    "token_id": 13,
+    "token_text": "\n",
+    "position": 1057,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 39,
+    "token_id": 13,
+    "token_text": "\n",
+    "position": 1058,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 40,
+    "token_id": 29950,
+    "token_text": "H",
+    "position": 1059,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 41,
+    "token_id": 1032,
+    "token_text": "ey",
+    "position": 1060,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 42,
+    "token_id": 29892,
+    "token_text": ",",
+    "position": 1061,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 43,
+    "token_id": 372,
+    "token_text": "it",
+    "position": 1062,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 44,
+    "token_id": 29915,
+    "token_text": "'",
+    "position": 1063,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 45,
+    "token_id": 29879,
+    "token_text": "s",
+    "position": 1064,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 46,
+    "token_id": 1063,
+    "token_text": "been",
+    "position": 1065,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 47,
+    "token_id": 263,
+    "token_text": "a",
+    "position": 1066,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 48,
+    "token_id": 8000,
+    "token_text": "while",
+    "position": 1067,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 49,
+    "token_id": 856,
+    "token_text": "...",
+    "position": 1068,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 50,
+    "token_id": 5674,
+    "token_text": "Well",
+    "position": 1069,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 51,
+    "token_id": 29892,
+    "token_text": ",",
+    "position": 1070,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 52,
+    "token_id": 1156,
+    "token_text": "after",
+    "position": 1071,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 53,
+    "token_id": 306,
+    "token_text": "I",
+    "position": 1072,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 54,
+    "token_id": 1476,
+    "token_text": "found",
+    "position": 1073,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 55,
+    "token_id": 393,
+    "token_text": "that",
+    "position": 1074,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 56,
+    "token_id": 9232,
+    "token_text": "mel",
+    "position": 1075,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 57,
+    "token_id": 1486,
+    "token_text": "ody",
+    "position": 1076,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 58,
+    "token_id": 856,
+    "token_text": "...",
+    "position": 1077,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 59,
+    "token_id": 29902,
+    "token_text": "I",
+    "position": 1078,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 60,
+    "token_id": 4140,
+    "token_text": "guess",
+    "position": 1079,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 61,
+    "token_id": 372,
+    "token_text": "it",
+    "position": 1080,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 62,
+    "token_id": 10771,
+    "token_text": "stuck",
+    "position": 1081,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 63,
+    "token_id": 411,
+    "token_text": "with",
+    "position": 1082,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 64,
+    "token_id": 592,
+    "token_text": "me",
+    "position": 1083,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 65,
+    "token_id": 363,
+    "token_text": "for",
+    "position": 1084,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 66,
+    "token_id": 777,
+    "token_text": "some",
+    "position": 1085,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 67,
+    "token_id": 2769,
+    "token_text": "reason",
+    "position": 1086,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 68,
+    "token_id": 29889,
+    "token_text": ".",
+    "position": 1087,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 69,
+    "token_id": 13,
+    "token_text": "\n",
+    "position": 1088,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 70,
+    "token_id": 13,
+    "token_text": "\n",
+    "position": 1089,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 71,
+    "token_id": 29924,
+    "token_text": "M",
+    "position": 1090,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 72,
+    "token_id": 290,
+    "token_text": "om",
+    "position": 1091,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 73,
+    "token_id": 29915,
+    "token_text": "'",
+    "position": 1092,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 74,
+    "token_id": 29879,
+    "token_text": "s",
+    "position": 1093,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 75,
+    "token_id": 2691,
+    "token_text": "fine",
+    "position": 1094,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 76,
+    "token_id": 29892,
+    "token_text": ",",
+    "position": 1095,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 77,
+    "token_id": 577,
+    "token_text": "so",
+    "position": 1096,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 78,
+    "token_id": 526,
+    "token_text": "are",
+    "position": 1097,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 79,
+    "token_id": 17988,
+    "token_text": "Minn",
+    "position": 1098,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 80,
+    "token_id": 347,
+    "token_text": "ie",
+    "position": 1099,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 81,
+    "token_id": 322,
+    "token_text": "and",
+    "position": 1100,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 82,
+    "token_id": 341,
+    "token_text": "M",
+    "position": 1101,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 83,
+    "token_id": 6727,
+    "token_text": "imm",
+    "position": 1102,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 84,
+    "token_id": 347,
+    "token_text": "ie",
+    "position": 1103,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 85,
+    "token_id": 29889,
+    "token_text": ".",
+    "position": 1104,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 86,
+    "token_id": 2193,
+    "token_text": "That",
+    "position": 1105,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 87,
+    "token_id": 3353,
+    "token_text": "whole",
+    "position": 1106,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 88,
+    "token_id": 2655,
+    "token_text": "thing",
+    "position": 1107,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 89,
+    "token_id": 471,
+    "token_text": "was",
+    "position": 1108,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 90,
+    "token_id": 10814,
+    "token_text": "bon",
+    "position": 1109,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 91,
+    "token_id": 29895,
+    "token_text": "k",
+    "position": 1110,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 92,
+    "token_id": 414,
+    "token_text": "ers",
+    "position": 1111,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 93,
+    "token_id": 29991,
+    "token_text": "!",
+    "position": 1112,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 94,
+    "token_id": 13,
+    "token_text": "\n",
+    "position": 1113,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 95,
+    "token_id": 13,
+    "token_text": "\n",
+    "position": 1114,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 96,
+    "token_id": 29902,
+    "token_text": "I",
+    "position": 1115,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 97,
+    "token_id": 29915,
+    "token_text": "'",
+    "position": 1116,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 98,
+    "token_id": 29885,
+    "token_text": "m",
+    "position": 1117,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 99,
+    "token_id": 263,
+    "token_text": "a",
+    "position": 1118,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 100,
+    "token_id": 2217,
+    "token_text": "little",
+    "position": 1119,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 101,
+    "token_id": 714,
+    "token_text": "out",
+    "position": 1120,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 102,
+    "token_id": 310,
+    "token_text": "of",
+    "position": 1121,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 103,
+    "token_id": 372,
+    "token_text": "it",
+    "position": 1122,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 104,
+    "token_id": 1492,
+    "token_text": "right",
+    "position": 1123,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 105,
+    "token_id": 1286,
+    "token_text": "now",
+    "position": 1124,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 106,
+    "token_id": 29892,
+    "token_text": ",",
+    "position": 1125,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 107,
+    "token_id": 360,
+    "token_text": "D",
+    "position": 1126,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 108,
+    "token_id": 328,
+    "token_text": "ad",
+    "position": 1127,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 109,
+    "token_id": 13700,
+    "token_text": "dropped",
+    "position": 1128,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 110,
+    "token_id": 263,
+    "token_text": "a",
+    "position": 1129,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 111,
+    "token_id": 2586,
+    "token_text": "bit",
+    "position": 1130,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 112,
+    "token_id": 310,
+    "token_text": "of",
+    "position": 1131,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 113,
+    "token_id": 263,
+    "token_text": "a",
+    "position": 1132,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 114,
+    "token_id": 13585,
+    "token_text": "bomb",
+    "position": 1133,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 115,
+    "token_id": 15903,
+    "token_text": "shell",
+    "position": 1134,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 116,
+    "token_id": 373,
+    "token_text": "on",
+    "position": 1135,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 117,
+    "token_id": 592,
+    "token_text": "me",
+    "position": 1136,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 118,
+    "token_id": 856,
+    "token_text": "...",
+    "position": 1137,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 119,
+    "token_id": 2023,
+    "token_text": "...",
+    "position": 1138,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 120,
+    "token_id": 2023,
+    "token_text": "...",
+    "position": 1139,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 121,
+    "token_id": 306,
+    "token_text": "I",
+    "position": 1140,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 122,
+    "token_id": 29915,
+    "token_text": "'",
+    "position": 1141,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 123,
+    "token_id": 29885,
+    "token_text": "m",
+    "position": 1142,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 124,
+    "token_id": 11643,
+    "token_text": "psych",
+    "position": 1143,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 125,
+    "token_id": 293,
+    "token_text": "ic",
+    "position": 1144,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 126,
+    "token_id": 29889,
+    "token_text": ".",
+    "position": 1145,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 127,
+    "token_id": 13,
+    "token_text": "\n",
+    "position": 1146,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 128,
+    "token_id": 13,
+    "token_text": "\n",
+    "position": 1147,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 129,
+    "token_id": 29902,
+    "token_text": "I",
+    "position": 1148,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 130,
+    "token_id": 2099,
+    "token_text": "mean",
+    "position": 1149,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 131,
+    "token_id": 29892,
+    "token_text": ",",
+    "position": 1150,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 132,
+    "token_id": 306,
+    "token_text": "I",
+    "position": 1151,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 133,
+    "token_id": 2337,
+    "token_text": "always",
+    "position": 1152,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 134,
+    "token_id": 750,
+    "token_text": "had",
+    "position": 1153,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 135,
+    "token_id": 263,
+    "token_text": "a",
+    "position": 1154,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 136,
+    "token_id": 11223,
+    "token_text": "feeling",
+    "position": 1155,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 137,
+    "token_id": 393,
+    "token_text": "that",
+    "position": 1156,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 138,
+    "token_id": 727,
+    "token_text": "there",
+    "position": 1157,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 139,
+    "token_id": 471,
+    "token_text": "was",
+    "position": 1158,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 140,
+    "token_id": 1554,
+    "token_text": "something",
+    "position": 1159,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 141,
+    "token_id": 1422,
+    "token_text": "different",
+    "position": 1160,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 142,
+    "token_id": 1048,
+    "token_text": "about",
+    "position": 1161,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 143,
+    "token_id": 592,
+    "token_text": "me",
+    "position": 1162,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 144,
+    "token_id": 29892,
+    "token_text": ",",
+    "position": 1163,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 145,
+    "token_id": 411,
+    "token_text": "with",
+    "position": 1164,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 146,
+    "token_id": 278,
+    "token_text": "the",
+    "position": 1165,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 147,
+    "token_id": 26148,
+    "token_text": "bent",
+    "position": 1166,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 148,
+    "token_id": 805,
+    "token_text": "sp",
+    "position": 1167,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 149,
+    "token_id": 6150,
+    "token_text": "oon",
+    "position": 1168,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 150,
+    "token_id": 322,
+    "token_text": "and",
+    "position": 1169,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 151,
+    "token_id": 599,
+    "token_text": "all",
+    "position": 1170,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 152,
+    "token_id": 856,
+    "token_text": "...",
+    "position": 1171,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 153,
+    "token_id": 13,
+    "token_text": "\n",
+    "position": 1172,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 154,
+    "token_id": 13,
+    "token_text": "\n",
+    "position": 1173,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 155,
+    "token_id": 29928,
+    "token_text": "D",
+    "position": 1174,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 156,
+    "token_id": 328,
+    "token_text": "ad",
+    "position": 1175,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 157,
+    "token_id": 2000,
+    "token_text": "called",
+    "position": 1176,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 158,
+    "token_id": 21734,
+    "token_text": "shortly",
+    "position": 1177,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 159,
+    "token_id": 1156,
+    "token_text": "after",
+    "position": 1178,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 160,
+    "token_id": 278,
+    "token_text": "the",
+    "position": 1179,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 161,
+    "token_id": 4473,
+    "token_text": "mess",
+    "position": 1180,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 162,
+    "token_id": 1208,
+    "token_text": "cal",
+    "position": 1181,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 163,
+    "token_id": 2168,
+    "token_text": "med",
+    "position": 1182,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 164,
+    "token_id": 1623,
+    "token_text": "down",
+    "position": 1183,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 165,
+    "token_id": 29892,
+    "token_text": ",",
+    "position": 1184,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 166,
+    "token_id": 306,
+    "token_text": "I",
+    "position": 1185,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 167,
+    "token_id": 29915,
+    "token_text": "'",
+    "position": 1186,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 168,
+    "token_id": 645,
+    "token_text": "ll",
+    "position": 1187,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 169,
+    "token_id": 925,
+    "token_text": "just",
+    "position": 1188,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 170,
+    "token_id": 2436,
+    "token_text": "write",
+    "position": 1189,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 171,
+    "token_id": 825,
+    "token_text": "what",
+    "position": 1190,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 172,
+    "token_id": 540,
+    "token_text": "he",
+    "position": 1191,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 173,
+    "token_id": 1497,
+    "token_text": "said",
+    "position": 1192,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 174,
+    "token_id": 856,
+    "token_text": "...",
+    "position": 1193,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 175,
+    "token_id": 13,
+    "token_text": "\n",
+    "position": 1194,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 176,
+    "token_id": 13,
+    "token_text": "\n",
+    "position": 1195,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 177,
+    "token_id": 29908,
+    "token_text": "\"",
+    "position": 1196,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 178,
+    "token_id": 29902,
+    "token_text": "I",
+    "position": 1197,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 179,
+    "token_id": 29915,
+    "token_text": "'",
+    "position": 1198,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 180,
+    "token_id": 29885,
+    "token_text": "m",
+    "position": 1199,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 181,
+    "token_id": 451,
+    "token_text": "not",
+    "position": 1200,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 182,
+    "token_id": 1854,
+    "token_text": "sure",
+    "position": 1201,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 183,
+    "token_id": 920,
+    "token_text": "how",
+    "position": 1202,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 184,
+    "token_id": 304,
+    "token_text": "to",
+    "position": 1203,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 185,
+    "token_id": 5649,
+    "token_text": "explain",
+    "position": 1204,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 186,
+    "token_id": 856,
+    "token_text": "...",
+    "position": 1205,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 187,
+    "token_id": 2423,
+    "token_text": "bu",
+    "position": 1206,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 188,
+    "token_id": 29891,
+    "token_text": "y",
+    "position": 1207,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 189,
+    "token_id": 366,
+    "token_text": "you",
+    "position": 1208,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 190,
+    "token_id": 505,
+    "token_text": "have",
+    "position": 1209,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 191,
+    "token_id": 349,
+    "token_text": "P",
+    "position": 1210,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 192,
+    "token_id": 5425,
+    "token_text": "SI",
+    "position": 1211,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 193,
+    "token_id": 1213,
+    "token_text": ".\"",
+    "position": 1212,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 194,
+    "token_id": 376,
+    "token_text": "\"",
+    "position": 1213,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 195,
+    "token_id": 3492,
+    "token_text": "You",
+    "position": 1214,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 196,
+    "token_id": 29915,
+    "token_text": "'",
+    "position": 1215,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 197,
+    "token_id": 276,
+    "token_text": "re",
+    "position": 1216,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 198,
+    "token_id": 2107,
+    "token_text": "great",
+    "position": 1217,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 199,
+    "token_id": 4595,
+    "token_text": "grand",
+    "position": 1218,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 200,
+    "token_id": 22212,
+    "token_text": "father",
+    "position": 1219,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 201,
+    "token_id": 12399,
+    "token_text": "studied",
+    "position": 1220,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 202,
+    "token_id": 372,
+    "token_text": "it",
+    "position": 1221,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 203,
+    "token_id": 29892,
+    "token_text": ",",
+    "position": 1222,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 204,
+    "token_id": 727,
+    "token_text": "there",
+    "position": 1223,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 205,
+    "token_id": 1795,
+    "token_text": "might",
+    "position": 1224,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 206,
+    "token_id": 367,
+    "token_text": "be",
+    "position": 1225,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 207,
+    "token_id": 1554,
+    "token_text": "something",
+    "position": 1226,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 208,
+    "token_id": 297,
+    "token_text": "in",
+    "position": 1227,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 209,
+    "token_id": 278,
+    "token_text": "the",
+    "position": 1228,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 210,
+    "token_id": 2362,
+    "token_text": "bas",
+    "position": 1229,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 211,
+    "token_id": 882,
+    "token_text": "ement",
+    "position": 1230,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 212,
+    "token_id": 304,
+    "token_text": "to",
+    "position": 1231,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 213,
+    "token_id": 1371,
+    "token_text": "help",
+    "position": 1232,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 214,
+    "token_id": 5649,
+    "token_text": "explain",
+    "position": 1233,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 215,
+    "token_id": 29908,
+    "token_text": "\"",
+    "position": 1234,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 216,
+    "token_id": 376,
+    "token_text": "\"",
+    "position": 1235,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 217,
+    "token_id": 29940,
+    "token_text": "N",
+    "position": 1236,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 218,
+    "token_id": 524,
+    "token_text": "int",
+    "position": 1237,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 219,
+    "token_id": 264,
+    "token_text": "en",
+    "position": 1238,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 220,
+    "token_id": 29892,
+    "token_text": ",",
+    "position": 1239,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 221,
+    "token_id": 366,
+    "token_text": "you",
+    "position": 1240,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 222,
+    "token_id": 29915,
+    "token_text": "'",
+    "position": 1241,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 223,
+    "token_id": 276,
+    "token_text": "re",
+    "position": 1242,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 224,
+    "token_id": 871,
+    "token_text": "only",
+    "position": 1243,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 225,
+    "token_id": 29871,
+    "token_text": "",
+    "position": 1244,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 226,
+    "token_id": 29896,
+    "token_text": "1",
+    "position": 1245,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 227,
+    "token_id": 29906,
+    "token_text": "2",
+    "position": 1246,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 228,
+    "token_id": 856,
+    "token_text": "...",
+    "position": 1247,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 229,
+    "token_id": 29902,
+    "token_text": "I",
+    "position": 1248,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 230,
+    "token_id": 6398,
+    "token_text": "wish",
+    "position": 1249,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 231,
+    "token_id": 306,
+    "token_text": "I",
+    "position": 1250,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 232,
+    "token_id": 1033,
+    "token_text": "could",
+    "position": 1251,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 233,
+    "token_id": 4386,
+    "token_text": "handle",
+    "position": 1252,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 234,
+    "token_id": 445,
+    "token_text": "this",
+    "position": 1253,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 235,
+    "token_id": 29892,
+    "token_text": ",",
+    "position": 1254,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 236,
+    "token_id": 541,
+    "token_text": "but",
+    "position": 1255,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 237,
+    "token_id": 306,
+    "token_text": "I",
+    "position": 1256,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 238,
+    "token_id": 29915,
+    "token_text": "'",
+    "position": 1257,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 239,
+    "token_id": 29885,
+    "token_text": "m",
+    "position": 1258,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 240,
+    "token_id": 21351,
+    "token_text": "tied",
+    "position": 1259,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 241,
+    "token_id": 701,
+    "token_text": "up",
+    "position": 1260,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 242,
+    "token_id": 472,
+    "token_text": "at",
+    "position": 1261,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 243,
+    "token_id": 664,
+    "token_text": "work",
+    "position": 1262,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 244,
+    "token_id": 29889,
+    "token_text": ".",
+    "position": 1263,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 245,
+    "token_id": 5791,
+    "token_text": "Son",
+    "position": 1264,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 246,
+    "token_id": 29892,
+    "token_text": ",",
+    "position": 1265,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 247,
+    "token_id": 372,
+    "token_text": "it",
+    "position": 1266,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 248,
+    "token_id": 29915,
+    "token_text": "'",
+    "position": 1267,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 249,
+    "token_id": 29879,
+    "token_text": "s",
+    "position": 1268,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 250,
+    "token_id": 931,
+    "token_text": "time",
+    "position": 1269,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 251,
+    "token_id": 363,
+    "token_text": "for",
+    "position": 1270,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 252,
+    "token_id": 366,
+    "token_text": "you",
+    "position": 1271,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 253,
+    "token_id": 304,
+    "token_text": "to",
+    "position": 1272,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 254,
+    "token_id": 748,
+    "token_text": "go",
+    "position": 1273,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 255,
+    "token_id": 373,
+    "token_text": "on",
+    "position": 1274,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 256,
+    "token_id": 263,
+    "token_text": "a",
+    "position": 1275,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 257,
+    "token_id": 2217,
+    "token_text": "little",
+    "position": 1276,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 258,
+    "token_id": 856,
+    "token_text": "...",
+    "position": 1277,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 259,
+    "token_id": 29926,
+    "token_text": "j",
+    "position": 1278,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 260,
+    "token_id": 473,
+    "token_text": "our",
+    "position": 1279,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 261,
+    "token_id": 3801,
+    "token_text": "ney",
+    "position": 1280,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 262,
+    "token_id": 322,
+    "token_text": "and",
+    "position": 1281,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 263,
+    "token_id": 6523,
+    "token_text": "discover",
+    "position": 1282,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 264,
+    "token_id": 278,
+    "token_text": "the",
+    "position": 1283,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 265,
+    "token_id": 5469,
+    "token_text": "nature",
+    "position": 1284,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 266,
+    "token_id": 310,
+    "token_text": "of",
+    "position": 1285,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 267,
+    "token_id": 596,
+    "token_text": "your",
+    "position": 1286,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 268,
+    "token_id": 10801,
+    "token_text": "powers",
+    "position": 1287,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 269,
+    "token_id": 29889,
+    "token_text": ".",
+    "position": 1288,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 270,
+    "token_id": 3872,
+    "token_text": "Don",
+    "position": 1289,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 271,
+    "token_id": 29915,
+    "token_text": "'",
+    "position": 1290,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 272,
+    "token_id": 29873,
+    "token_text": "t",
+    "position": 1291,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 273,
+    "token_id": 2125,
+    "token_text": "take",
+    "position": 1292,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 274,
+    "token_id": 963,
+    "token_text": "them",
+    "position": 1293,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 275,
+    "token_id": 3578,
+    "token_text": "light",
+    "position": 1294,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 276,
+    "token_id": 368,
+    "token_text": "ly",
+    "position": 1295,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 277,
+    "token_id": 29892,
+    "token_text": ",",
+    "position": 1296,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 278,
+    "token_id": 366,
+    "token_text": "you",
+    "position": 1297,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 279,
+    "token_id": 1073,
+    "token_text": "know",
+    "position": 1298,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 280,
+    "token_id": 856,
+    "token_text": "...",
+    "position": 1299,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 281,
+    "token_id": 2541,
+    "token_text": "with",
+    "position": 1300,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 282,
+    "token_id": 2107,
+    "token_text": "great",
+    "position": 1301,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 283,
+    "token_id": 3081,
+    "token_text": "power",
+    "position": 1302,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 284,
+    "token_id": 322,
+    "token_text": "and",
+    "position": 1303,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 285,
+    "token_id": 599,
+    "token_text": "all",
+    "position": 1304,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 286,
+    "token_id": 393,
+    "token_text": "that",
+    "position": 1305,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 287,
+    "token_id": 1213,
+    "token_text": ".\"",
+    "position": 1306,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 288,
+    "token_id": 376,
+    "token_text": "\"",
+    "position": 1307,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 289,
+    "token_id": 29902,
+    "token_text": "I",
+    "position": 1308,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 290,
+    "token_id": 29915,
+    "token_text": "'",
+    "position": 1309,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 291,
+    "token_id": 645,
+    "token_text": "ll",
+    "position": 1310,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 292,
+    "token_id": 19754,
+    "token_text": "depos",
+    "position": 1311,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 293,
+    "token_id": 277,
+    "token_text": "it",
+    "position": 1312,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 294,
+    "token_id": 6909,
+    "token_text": "money",
+    "position": 1313,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 295,
+    "token_id": 964,
+    "token_text": "into",
+    "position": 1314,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 296,
+    "token_id": 596,
+    "token_text": "your",
+    "position": 1315,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 297,
+    "token_id": 9124,
+    "token_text": "bank",
+    "position": 1316,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 298,
+    "token_id": 3633,
+    "token_text": "account",
+    "position": 1317,
+    "token_brightness": 255.0
+  },
+  {
+    "type": "generation",
+    "step": 299,
+    "token_id": 29892,
+    "token_text": ",",
+    "position": 1318,
+    "token_brightness": 255.0
+  }
+]

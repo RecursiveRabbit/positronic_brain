@@ -99,10 +99,10 @@ def update_brightness_scores(
         # We want the attention from the latest token (last position) to all previous tokens
         attentions = outputs.attentions[-1]  # Get last layer's attention
         print(f"[DEBUG Brightness] attentions shape: {attentions.shape}")
-        
-        # Get attention from latest token to all previous tokens, averaging across heads
-        # Shape after mean: [batch, seq_len]
-        latest_token_attention = attentions.mean(dim=1)[:, -1, :]
+        # Squeeze out the head dimension by averaging, and get the attention from the last token
+        # Shape after mean: [batch, seq_len, seq_len]
+        # Shape after selecting last token: [batch, seq_len]
+        latest_token_attention = attentions.mean(dim=1)[:, -1, :].to(dtype=torch.float32)  # Cast to float32 to avoid scalar type mismatch
         
         # Log attention tensor stats
         att_vec = latest_token_attention[0]  # First batch item
@@ -130,7 +130,9 @@ def update_brightness_scores(
         
         # Save attention traces periodically if enabled
         if config.ATTENTION_TRACE_INTERVAL > 0 and generation_step % config.ATTENTION_TRACE_INTERVAL == 0:
-            _async_save_attention(latest_token_attention[0], generation_step)
+            import asyncio
+            # Fire-and-forget with create_task to avoid coroutine not awaited warning
+            asyncio.create_task(_async_save_attention(latest_token_attention[0], generation_step))
         
         # Prepare brightness updates based on attention scores
         # Get a snapshot of the current KV mirror state
@@ -156,10 +158,13 @@ def update_brightness_scores(
             attention_score = latest_token_attention[0, position].item()  # Assuming batch size 1
             
             # Calculate new brightness using TTL approach:
-            # b_new = b_prev - decay + int(attention * gain_coefficient)
+            # b_new = b_prev - decay + (attention * gain_coefficient)
             current_brightness = token.brightness
-            attention_gain = int(attention_score * gain_coefficient)  # Integer gain based on attention
+            attention_gain = attention_score * gain_coefficient  # Floating-point gain based on attention
             new_brightness = current_brightness - decay_per_tick + attention_gain
+            
+            # Clamp brightness to valid range [0, BRIGHTNESS_MAX] to avoid negative values
+            new_brightness = max(0.0, min(config.BRIGHTNESS_MAX, new_brightness))
             
             # Add detailed logging for a few specific positions
             if position == 0 or position == latest_token_attention.shape[1] - 1 or position % 100 == 0:

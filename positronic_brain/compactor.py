@@ -105,8 +105,16 @@ async def compactor_task(
                     future = asyncio.Future()
                     futures.append(future)
                     
-                    # Put request on queue: (reply_future, position, window_size, original_token_id)
-                    request = (future, position, window_size, original_token_id)
+                    # Calculate start and end positions for the request
+                    start_pos = max(0, position - window_size)
+                    end_pos = position + window_size + 1
+                    
+                    # Build a request tuple with the essential information
+                    # (start_pos, end_pos, repair_index_in_segment, original_token_id, reply_future)
+                    repair_idx = position - start_pos
+                    token_id = original_token_id
+                    request = (start_pos, end_pos, repair_idx, token_id, futures[idx])
+                    
                     try:
                         await compactor_request_queue.put(request)
                     except Exception as e:
@@ -132,31 +140,39 @@ async def compactor_task(
                     success_count = 0
                     diff_count = 0
                     
-                    for result in results:
+                    for idx, result in enumerate(results):
                         # Skip exceptions or timeouts
                         if isinstance(result, Exception):
                             print(f"[Compactor] Request failed: {result}")
                             continue
                             
                         try:
-                            # Extract data from result
-                            input_embeddings_segment = result["input_embeddings_segment"]
-                            attention_mask_segment = result["attention_mask_segment"]
-                            repair_index_in_segment = result["repair_index_in_segment"]
-                            original_token_id = result["original_token_id"]
-                            global_position_start = result["global_position_start"]
+                            # Extract the data
+                            result_data = results[idx]
+                            input_embeddings_segment = result_data.get("input_embeddings_segment")
+                            attention_mask_segment = result_data.get("attention_mask_segment")
+                            brightness_map_segment = result_data.get("brightness_map_segment")
+                            original_input_ids_segment = result_data.get("original_input_ids_segment")
+                            repair_index_in_segment = result_data.get("repair_index_in_segment")
+                            original_token_id = result_data.get("original_token_id")
+                            global_position_start = result_data.get("global_position_start")
                             
-                            # We need to convert the repair_index from global to segment-local
-                            repair_indices_local = [repair_index_in_segment]
-                            token_ids_local = [original_token_id]
+                            # Check for required data
+                            if (input_embeddings_segment is None or 
+                                attention_mask_segment is None or 
+                                brightness_map_segment is None or
+                                original_input_ids_segment is None or
+                                repair_index_in_segment is None):
+                                print(f"[Compactor Error] Missing required data in result")
+                                continue
                             
-                            # Call diffuser to compute diffs
+                            # Call diffuser to compute diffs using brightness-guided diffusion
                             diff_list = compute_diff(
                                 diffuser_model=diffuser_model,
                                 input_embeddings=input_embeddings_segment,
                                 attention_mask=attention_mask_segment,
-                                token_ids=token_ids_local,
-                                repair_indices=repair_indices_local
+                                brightness_map=brightness_map_segment,
+                                original_input_ids=original_input_ids_segment
                             )
                             
                             # Process the diffs if any were found

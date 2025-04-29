@@ -21,6 +21,7 @@ from positronic_brain.diffuser_runner import (
     DiffuserModel, predict_replacement, compute_diff, compute_diff_masking,
     repair_token, get_repaired_tokens  # Legacy functions kept for tests
 )
+import asyncio
 
 
 class TestDiffuserRunner:
@@ -242,26 +243,32 @@ class TestDiffuserRunner:
         
         # Create input data
         batch_size, seq_len, embed_dim = 1, 5, 768
-        input_embeddings = torch.ones((batch_size, seq_len, embed_dim), dtype=torch.float)
-        attention_mask = torch.ones((batch_size, seq_len), dtype=torch.long)
+    @pytest.mark.asyncio
+    async def test_brightness_guided_masking(self):
+        """Test the new brightness-guided masking implementation."""
+        # Set up mock diffuser model
+        mock_diffuser = self.setup_mock_diffuser()
         
-        # Create brightness map (normalized values 0-1)
-        # - Position 0: High brightness (locked, should not change)
-        # - Position 1: Medium-high brightness (locked, should not change)
-        # - Position 2: Medium-low brightness (not locked, may change)
-        # - Position 3: Low brightness (not locked, should change)
-        # - Position 4: Very low brightness (not locked, should change)
-        brightness_values = torch.tensor([0.9, 0.8, 0.7, 0.4, 0.2], dtype=torch.float)
+        # Create attention mask
+        attention_mask = torch.ones((1, 5), dtype=torch.long)  # [batch, seq_len]
         
-        # Create token IDs tensor
-        original_input_ids = torch.tensor([[100, 200, 500, 2000, 300]], dtype=torch.long)
+        # Create brightness map - higher values = brighter = less likely to be changed
+        brightness_values = torch.tensor([0.9, 0.8, 0.7, 0.4, 0.1])  # [seq_len]
+        # Scale to 0-255 range to test normalization
+        brightness_values = brightness_values * 255.0
         
-        # Mock the diffuser model's logits to return specific predictions
+        # Create original input IDs
+        original_input_ids = torch.tensor([[100, 200, 500, 2000, 300]], dtype=torch.long)  # [batch, seq_len]
+        
+        # Set up mock model to predict different tokens for testing
         mock_outputs = MagicMock()
-        mock_logits = torch.zeros((batch_size, seq_len, 30522))  # [batch, seq_len, vocab_size]        
-        # Set predictions for each position
-        mock_logits[0, 0, 999] = 10.0  # Change from 100, but should be locked due to high brightness
-        mock_logits[0, 1, 888] = 10.0  # Change from 200, but should be locked due to high brightness
+        mock_logits = torch.zeros((1, 5, 30522))  # [batch, seq_len, vocab_size]
+        
+        # Mock different token predictions for different positions
+        # Position 0-1 should be locked due to high brightness, so predictions don't matter
+        mock_logits[0, 0, 999] = 10.0  # Won't change due to locked status
+        mock_logits[0, 1, 888] = 10.0  # Won't change due to locked status
+        # Positions 2-4 have lower brightness and should be tested for changes
         mock_logits[0, 2, 777] = 10.0  # Change from 500, may or may not be locked
         mock_logits[0, 3, 666] = 10.0  # Change from 2000, should be changed due to low brightness
         mock_logits[0, 4, 555] = 10.0  # Change from 300, should be changed due to very low brightness
@@ -271,16 +278,14 @@ class TestDiffuserRunner:
         
         # Patch config for testing
         with patch('positronic_brain.config.BRIGHTNESS_LOCK_THRESHOLD', 0.75), \
-             patch('positronic_brain.config.BRIGHTNESS_NOISE_ALPHA', 1.0), \
-             patch('positronic_brain.config.BRIGHTNESS_MAX', 1.0):  # Normalized already
+             patch('positronic_brain.config.BRIGHTNESS_MAX', 255.0):
             
-            # Call the brightness-guided noise diffusion function
-            diff_list = compute_diff(
-                mock_diffuser,
-                input_embeddings,
-                attention_mask,
-                brightness_values,
-                original_input_ids
+            # Call the brightness-guided masking function (now async)
+            diff_list = await compute_diff(
+                diffuser_model=mock_diffuser,
+                original_input_ids=original_input_ids,
+                attention_mask=attention_mask,
+                brightness_map=brightness_values
             )
             
             # Verify results:
@@ -310,15 +315,15 @@ class TestDiffuserRunner:
             assert diff_list[2][1] == 300, f"Expected original token 300, got {diff_list[2][1]}"
             assert diff_list[2][2] == 555, f"Expected new token 555, got {diff_list[2][2]}"
 
-    def test_brightness_guided_error_handling(self):
-        """Test error handling in the brightness-guided noise diffusion function."""
+    @pytest.mark.asyncio
+    async def test_brightness_guided_error_handling(self):
+        """Test error handling in the brightness-guided masking function."""
         # Test with None diffuser model
-        diff_list = compute_diff(
-            None,  # None diffuser model should be handled gracefully
-            torch.ones((1, 5, 768)),
-            torch.ones((1, 5)),
-            torch.ones(5),  # Brightness map
-            torch.ones((1, 5), dtype=torch.long)  # Original input IDs
+        diff_list = await compute_diff(
+            diffuser_model=None,  # None diffuser model should be handled gracefully
+            original_input_ids=torch.ones((1, 5), dtype=torch.long),
+            attention_mask=torch.ones((1, 5)),
+            brightness_map=torch.ones(5)  # Brightness map
         )
         assert diff_list == [], "Should return empty list for None diffuser model"
         
@@ -328,14 +333,12 @@ class TestDiffuserRunner:
         
         # Patch config for testing
         with patch('positronic_brain.config.BRIGHTNESS_LOCK_THRESHOLD', 0.75), \
-             patch('positronic_brain.config.BRIGHTNESS_NOISE_ALPHA', 1.0), \
-             patch('positronic_brain.config.BRIGHTNESS_MAX', 1.0):
+             patch('positronic_brain.config.BRIGHTNESS_MAX', 255.0):
             
-            diff_list = compute_diff(
-                mock_diffuser,
-                torch.ones((1, 5, 768)),
-                torch.ones((1, 5)),
-                torch.ones(5),  # Brightness map
-                torch.ones((1, 5), dtype=torch.long)  # Original input IDs
+            diff_list = await compute_diff(
+                diffuser_model=mock_diffuser,
+                original_input_ids=torch.ones((1, 5), dtype=torch.long),
+                attention_mask=torch.ones((1, 5)),
+                brightness_map=torch.ones(5)  # Brightness map
             )
             assert diff_list == [], "Should return empty list when model throws exception"
