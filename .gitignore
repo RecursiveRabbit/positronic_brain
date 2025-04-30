@@ -27,3 +27,13 @@ tests/captures/
 
 # Test cache
 .pytest_cache/
+
+# Logs and debug data
+*.log
+*_events.json
+*verify*.txt
+culling_test.md
+
+# Temporary files and artifacts
+0.00
+255.00
