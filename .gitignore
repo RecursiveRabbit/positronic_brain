@@ -19,3 +19,11 @@ Thumbs.db
 # IDE/editor configs (optional)
 .vscode/
 .idea/
+
+# Project-specific files
+attention_traces/
+tests/captures/
+*.pt
+
+# Test cache
+.pytest_cache/
