@@ -90,10 +90,10 @@ test_cases = [
         id="short_fox_prompt"  # Pytest marker ID
     ),
     pytest.param(
-        "resume_context",  # test_id
-        load_text_file("resume_context.bak"),  # input_text loaded from file
-        None,  # expected_initial_tokens (let tokenizer decide)
-        id="resume_context_file"  # Pytest marker ID
+        "long_context_sample",  # test_id
+        load_text_file("tests/positronic_brain/mocks/long_context_sample.txt"),  # input_text loaded from file
+        862,  # expected_initial_tokens based on tokenization
+        id="long_context_sample_file"  # Pytest marker ID
     ),
     # Add more test cases as needed
 ]

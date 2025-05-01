@@ -19,7 +19,7 @@ from positronic_brain.serialization_utils import safe_load, safe_save
 # Define test cases for brightness calculations
 test_cases = [
     pytest.param("short_fox", 13, id="brightness_short_fox"),
-    pytest.param("resume_context", 1018, id="brightness_resume_context"),
+    pytest.param("long_context_sample", 862, id="brightness_long_context_sample"),
 ]
 
 @pytest.fixture(scope="session")

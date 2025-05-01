@@ -31,7 +31,7 @@ logging.basicConfig(level=logging.INFO,
 logger = logging.getLogger(__name__)
 
 # Test IDs for parameterization
-TEST_IDS = ['short_fox', 'resume_context']
+TEST_IDS = ['short_fox', 'long_context_sample']
 
 @pytest.fixture(scope="function", params=TEST_IDS)
 def load_cull_candidates_step3b_output(request):
@@ -61,8 +61,8 @@ def load_cull_candidates_step3b_output(request):
     # Set expected token counts based on test_id
     if 'short_fox' in test_id:
         expected_initial_tokens = 13  # The fox prompt has 13 tokens
-    else:  # 'resume_context'
-        expected_initial_tokens = 1018  # The resume context has ~1018 tokens
+    else:  # 'long_context_sample'
+        expected_initial_tokens = 862  # The long context sample has 862 tokens
     
     # Ensure the data contains expected keys
     required_keys = ['positions_to_cull', 'initial_seq_len', 'initial_input_ids']

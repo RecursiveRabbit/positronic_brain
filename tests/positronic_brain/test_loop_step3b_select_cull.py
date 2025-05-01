@@ -15,7 +15,7 @@ from positronic_brain.serialization_utils import safe_load, safe_save
 # Define test cases for cull candidate selection
 test_cases = [
     pytest.param("short_fox", 13, id="select_cull_short_fox"),
-    pytest.param("resume_context", 1018, id="select_cull_resume_context"),
+    pytest.param("long_context_sample", 862, id="select_cull_long_context_sample"),
 ]
 
 @pytest.fixture(scope="function")
