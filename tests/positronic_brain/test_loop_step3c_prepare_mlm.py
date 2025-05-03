@@ -1,19 +1,20 @@
 """
-Test Step 3c: Prepare MLM Inputs via Token-by-Token Text Translation
+Test Step 3c: Prepare MLM Inputs for Token Pairs via Token-by-Token Text Translation
 
 This test prepares inputs for a Masked Language Model (MLM) by translating TinyLlama tokens
 to MLM-compatible inputs through a token-by-token text translation process.
 
-For each position to cull, this test:
-1. Extracts a window of TinyLlama token IDs around the position
+For each pair of adjacent tokens selected for culling, this test:
+1. Extracts a window of TinyLlama token IDs around the pair
 2. Decodes each TinyLlama token individually to preserve boundaries
-3. Replaces the token at the cull position with an MLM mask token
-4. Re-tokenizes the resulting string with the MLM tokenizer
-5. Finds the index of the mask token in the MLM sequence
-6. Packages all necessary information for the diffuser in Step 3d
+3. Replaces the first token of the pair with an MLM mask token
+4. Omits the second token of the pair entirely (skipping it in the text)
+5. Re-tokenizes the resulting string with the MLM tokenizer
+6. Finds the index of the mask token in the MLM sequence
+7. Packages all necessary information for the diffuser in Step 3d
 
-This approach ensures robust handling of different tokenizer vocabularies while maintaining
-the mapping between the original global position and the masked token in the MLM input.
+This approach allows us to replace two adjacent tokens with a single new token,
+while ensuring robust handling of different tokenizer vocabularies.
 """
 
 import os
@@ -30,50 +31,37 @@ logging.basicConfig(level=logging.INFO,
                    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# Test IDs for parameterization
-TEST_IDS = ['short_fox', 'long_context_sample']
+# Using a fixed initial prompt from session-scoped fixture
 
-@pytest.fixture(scope="function", params=TEST_IDS)
-def load_cull_candidates_step3b_output(request):
+@pytest.fixture(scope="function")
+def load_culled_pairs_step3b_output():
     """
-    Load the cull candidates data saved by Step 3b.
-    
-    Args:
-        request: Pytest request object containing the test_id parameter
+    Load the culled pairs data saved by Step 3b.
     
     Returns:
-        dict: The cull candidates data for the specified test_id
+        dict: The culled pairs data
     """
-    test_id = request.param
-    
-    # Define the path to the cull candidates data
-    output_path = os.path.join('tests', 'captures', f'step3b_cull_candidates_{test_id}.pt')
+    # Define the path to the culled pairs data using fixed identifier
+    output_path = os.path.join('tests', 'captures', 'step3b_culled_pairs_fixed_initial.pt')
     
     # Ensure the file exists
     assert os.path.exists(output_path), f"Step 3b output file not found at {output_path}"
     
-    # Load the cull candidates data
-    cull_candidates_data = safe_load(output_path)
+    # Load the culled pairs data
+    culled_pairs_data = safe_load(output_path)
     
-    # Add the test_id for reference
-    cull_candidates_data['test_id'] = test_id
-    
-    # Set expected token counts based on test_id
-    if 'short_fox' in test_id:
-        expected_initial_tokens = 13  # The fox prompt has 13 tokens
-    else:  # 'long_context_sample'
-        expected_initial_tokens = 862  # The long context sample has 862 tokens
+    # Add the test_id for reference if not already present
+    if 'test_id' not in culled_pairs_data:
+        culled_pairs_data['test_id'] = 'fixed_initial'
     
     # Ensure the data contains expected keys
-    required_keys = ['positions_to_cull', 'initial_seq_len', 'initial_input_ids']
+    required_keys = ['selected_pairs', 'initial_seq_len', 'initial_input_ids']
     for key in required_keys:
-        assert key in cull_candidates_data, f"Required key '{key}' not found in step 3b output data"
+        assert key in culled_pairs_data, f"Required key '{key}' not found in step 3b output data"
     
-    # Verify initial_seq_len matches expectations
-    assert cull_candidates_data['initial_seq_len'] == expected_initial_tokens, \
-        f"Expected {expected_initial_tokens} tokens, but got {cull_candidates_data['initial_seq_len']}"
+    print(f"Step 3b culled pairs data loaded successfully with {len(culled_pairs_data['selected_pairs'])} pairs")
     
-    return cull_candidates_data
+    return culled_pairs_data
 
 @pytest.fixture(scope="session")
 def tinyllama_tokenizer():
@@ -127,92 +115,97 @@ def diffuser_window_config():
         'half_window': half_window
     }
 
-def test_prepare_mlm_inputs(load_cull_candidates_step3b_output, tinyllama_tokenizer, mlm_tokenizer, diffuser_window_config):
+def test_prepare_mlm_inputs(load_culled_pairs_step3b_output, tinyllama_tokenizer, mlm_tokenizer, diffuser_window_config):
     """
-    Test Step 3c: Prepare MLM Inputs via Token-by-Token Text Translation
+    Test Step 3c: Prepare MLM Inputs for Token Pairs via Token-by-Token Text Translation
     
-    This test prepares input data for the MLM by extracting context windows around each token
-    to be culled and translating them to MLM-compatible inputs through text.
+    This test prepares input data for the MLM by extracting context windows around each pair
+    of tokens to be culled and translating them to MLM-compatible inputs through text.
+    The first token in each pair is replaced with a mask token, while the second token is omitted.
     
     Args:
-        load_cull_candidates_step3b_output: Fixture providing the Step 3b output data
+        load_culled_pairs_step3b_output: Fixture providing the Step 3b output data with selected pairs
         tinyllama_tokenizer: The TinyLlama tokenizer
         mlm_tokenizer: The MLM tokenizer
         diffuser_window_config: Fixture providing diffuser configuration parameters
     """
-    # Extract data from the fixtures
-    cull_candidates_data = load_cull_candidates_step3b_output
-    test_id = cull_candidates_data['test_id']
-    positions_to_cull = cull_candidates_data['positions_to_cull']
-    initial_input_ids = cull_candidates_data['initial_input_ids']
-    initial_seq_len = cull_candidates_data['initial_seq_len']
+    # Extract the Step 3b data
+    culled_pairs_data = load_culled_pairs_step3b_output
     
-    # Extract diffuser configuration
-    window_size = diffuser_window_config['window_size']
+    # Get the token pairs to cull
+    selected_pairs = culled_pairs_data['selected_pairs']
+    initial_seq_len = culled_pairs_data['initial_seq_len']
+    initial_input_ids = culled_pairs_data['initial_input_ids']
+    
+    # Get the MLM tokenizer's mask token ID
+    mlm_mask_token_id = mlm_tokenizer.mask_token_id
+    mlm_mask_token = mlm_tokenizer.mask_token
+    
+    # Get window parameters
     half_window = diffuser_window_config['half_window']
     
-    # Get device from tensors
-    device = initial_input_ids.device
-    
-    # Print test information
-    print(f"\nPreparing MLM inputs for test: {test_id}")
-    print(f"Initial sequence length: {initial_seq_len}")
-    print(f"Positions to cull: {positions_to_cull}")
-    print(f"Window size: {window_size} (half_window: {half_window})")
+    print(f"Preparing MLM inputs with parameters:")
+    print(f"  - Initial sequence length: {initial_seq_len}")
+    print(f"  - Number of pairs to cull: {len(selected_pairs)}")
+    print(f"  - Pairs to cull: {selected_pairs}")
+    print(f"  - Half window size: {half_window}")
+    print(f"  - MLM mask token: {mlm_mask_token}")
     print(f"TinyLlama tokenizer vocabulary size: {len(tinyllama_tokenizer)}")
     print(f"MLM tokenizer vocabulary size: {len(mlm_tokenizer)}")
     print(f"MLM mask token: {mlm_tokenizer.mask_token}")
     print(f"MLM mask token ID: {mlm_tokenizer.mask_token_id}")
     
-    # Initialize the list to store MLM inputs
-    mlm_input_list = []
+    # Initialize list to hold MLM inputs
+    mlm_pair_input_list = []
     
-    # Process each position to cull
-    for global_cull_position in positions_to_cull:
-        print(f"\nProcessing cull position: {global_cull_position}")
+    # Prepare MLM input for each selected pair to cull
+    for pair_idx, (pos1, pos2) in enumerate(selected_pairs):
+        # Define global target and omitted positions
+        global_target_position = pos1  # First token position (will be replaced with mask)
+        global_omitted_position = pos2  # Second token position (will be omitted)
         
-        # Calculate window boundaries
-        start_pos = max(0, global_cull_position - half_window)
-        end_pos = min(initial_seq_len, global_cull_position + half_window + 1)
-        actual_window_len = end_pos - start_pos
+        print(f"\nPreparing MLM input for pair {(pos1, pos2)} ({pair_idx+1}/{len(selected_pairs)})")
         
-        print(f"Window boundaries: [{start_pos}, {end_pos}) (length: {actual_window_len})")
+        # Calculate window boundaries centered on the target position (first token)
+        start_pos = max(0, global_target_position - half_window)
+        end_pos = min(initial_seq_len, global_target_position + half_window + 1)
         
-        # Extract the TinyLlama window IDs
+        # Extract the TinyLlama token IDs for this window
         tinyllama_window_ids = initial_input_ids[0, start_pos:end_pos]
         
-        # Calculate the local position of the masked token within the window
-        masked_position_local = global_cull_position - start_pos
+        # Calculate the local positions within the window
+        target_pos_local = global_target_position - start_pos  # Local position of the first token (to be masked)
+        omitted_pos_local = global_omitted_position - start_pos  # Local position of the second token (to be omitted)
         
-        # Get original token ID at masked position
-        original_token_id_at_mask = tinyllama_window_ids[masked_position_local].item()
+        # Save original token ID at the target position
+        original_token_id_at_target = tinyllama_window_ids[target_pos_local].item()
         
-        print(f"Masked position (local): {masked_position_local}")
-        print(f"Original token ID at mask: {original_token_id_at_mask}")
+        print(f"Window: start_pos={start_pos}, end_pos={end_pos}, window_length={len(tinyllama_window_ids)}")
+        print(f"Target position (local): {target_pos_local}, Omitted position (local): {omitted_pos_local}")
+        print(f"Original token ID at target: {original_token_id_at_target}")
         
-        # Decode tokens individually and reconstruct with mask
+        # Build the masked string token-by-token to maintain token boundaries
         window_token_texts = []
-        for i, tid in enumerate(tinyllama_window_ids):
-            if i == masked_position_local:
-                # Insert MLM mask token at the culled position
-                window_token_texts.append(mlm_tokenizer.mask_token)
-            else:
-                # Decode each TinyLlama token individually
-                text = tinyllama_tokenizer.decode(
-                    [tid.item()], 
-                    skip_special_tokens=False,
-                    clean_up_tokenization_spaces=False
-                )
-                window_token_texts.append(text)
         
-        # Join the token texts to create the masked text string
+        for i, token_id in enumerate(tinyllama_window_ids):
+            if i == target_pos_local:
+                # Replace the first token of the pair with the MLM mask token
+                window_token_texts.append(mlm_mask_token)
+            elif i == omitted_pos_local:
+                # Omit the second token of the pair entirely
+                window_token_texts.append("")  # Empty string effectively removes this token
+            else:
+                # Keep all other tokens as they are
+                token_text = tinyllama_tokenizer.decode([token_id.item()], skip_special_tokens=False, clean_up_tokenization_spaces=False)
+                window_token_texts.append(token_text)
+        
+        # Join all token texts into a single string
         masked_text_string = "".join(window_token_texts)
         
-        print(f"Length of masked text string: {len(masked_text_string)}")
-        if len(masked_text_string) < 100:
-            print(f"Masked text string: {masked_text_string}")
-        else:
-            print(f"Masked text string (truncated): {masked_text_string[:50]}...{masked_text_string[-50:]}")
+        # For debugging: Show a substring of the text input
+        max_debug_len = 50
+        debug_text = masked_text_string[:max_debug_len] + '...' if len(masked_text_string) > max_debug_len else masked_text_string
+        print(f"Masked text with omitted token: {debug_text}")
         
         # Re-tokenize with MLM tokenizer
         mlm_inputs = mlm_tokenizer(
@@ -245,55 +238,59 @@ def test_prepare_mlm_inputs(load_cull_candidates_step3b_output, tinyllama_tokeni
         
         # Create input dictionary for this window
         mlm_input_data = {
-            'global_cull_position': global_cull_position,
-            'original_token_id_at_mask': original_token_id_at_mask,
+            'original_pair': (pos1, pos2),  # Store the original pair for reference
+            'global_target_position': global_target_position,  # Position of the first token (to be masked)
+            'global_omitted_position': global_omitted_position,  # Position of the second token (to be omitted)
+            'original_token_id_at_target': original_token_id_at_target,
             'mlm_input_ids': mlm_input_ids.cpu(),  # Ensure CPU for saving
             'mlm_attention_mask': mlm_attention_mask.cpu(),
             'mlm_mask_index': mlm_mask_index,
             # Include the original TinyLlama window for reference
             'tinyllama_window_ids': tinyllama_window_ids.cpu(),
-            'tinyllama_masked_position_local': masked_position_local
+            'tinyllama_target_position_local': target_pos_local,
+            'tinyllama_omitted_position_local': omitted_pos_local
         }
         
         # Add to the list
-        mlm_input_list.append(mlm_input_data)
+        mlm_pair_input_list.append(mlm_input_data)
     
-    print(f"\nPrepared {len(mlm_input_list)} MLM input windows")
+    print(f"\nPrepared {len(mlm_pair_input_list)} MLM input windows for pairs")
     
     # Prepare the data to be saved
     prepared_data = {
-        'test_id': test_id,
-        'mlm_input_list': mlm_input_list,  # List of MLM window data dictionaries
+        'test_id': 'fixed_initial',  # Hardcoded to match our fixed identifier
+        'mlm_pair_input_list': mlm_pair_input_list,  # List of MLM window data dictionaries for pairs
         # Pass through necessary data from previous steps
         'initial_seq_len': initial_seq_len,
         'initial_input_ids': initial_input_ids.cpu(),  # Ensure CPU
-        'positions_to_cull': positions_to_cull,
-        'selected_token_id': cull_candidates_data['selected_token_id']
+        'selected_pairs': selected_pairs,
+        'selected_token_id': culled_pairs_data['selected_token_id']
         # KV cache intentionally NOT passed through
     }
     
     # Define the output path
-    output_path = os.path.join('tests', 'captures', f'step3c_mlm_inputs_{test_id}.pt')
+    output_path = os.path.join('tests', 'captures', 'step3c_mlm_pair_inputs_fixed_initial.pt')
     
     # Save the prepared data
     torch.save(prepared_data, output_path)
-    print(f"Saved MLM inputs to: {output_path}")
+    print(f"Saved MLM pair inputs to: {output_path}")
     
     # Assertions
     
     # Check that we have the right number of MLM inputs
-    assert len(mlm_input_list) == len(positions_to_cull), \
-        f"Expected {len(positions_to_cull)} MLM inputs, but got {len(mlm_input_list)}"
+    assert len(mlm_pair_input_list) == len(selected_pairs), \
+        f"Expected {len(selected_pairs)} MLM pair inputs, but got {len(mlm_pair_input_list)}"
     
     # If we have any MLM inputs, check the structure
-    if mlm_input_list:
-        first_input = mlm_input_list[0]
+    if mlm_pair_input_list:
+        first_input = mlm_pair_input_list[0]
         
         # Check keys
         required_keys = ['mlm_input_ids', 'mlm_attention_mask', 'mlm_mask_index', 
-                         'global_cull_position', 'original_token_id_at_mask']
+                         'global_target_position', 'global_omitted_position', 
+                         'original_token_id_at_target', 'original_pair']
         for key in required_keys:
-            assert key in first_input, f"Required key '{key}' not found in MLM input"
+            assert key in first_input, f"Required key '{key}' not found in MLM pair input"
         
         # Check mask index is valid
         assert first_input['mlm_mask_index'] >= 0, \
@@ -302,6 +299,14 @@ def test_prepare_mlm_inputs(load_cull_candidates_step3b_output, tinyllama_tokeni
         # Check mask token is at the expected position
         assert first_input['mlm_input_ids'][0, first_input['mlm_mask_index']].item() == mlm_tokenizer.mask_token_id, \
             f"Token ID at mask index does not match MLM mask token ID"
+        
+        # Verify that original_pair is correctly structured
+        assert len(first_input['original_pair']) == 2, \
+            f"original_pair should be a tuple of length 2, got {len(first_input['original_pair'])}"
+        assert first_input['original_pair'][0] == first_input['global_target_position'], \
+            f"first element of original_pair should match global_target_position"
+        assert first_input['original_pair'][1] == first_input['global_omitted_position'], \
+            f"second element of original_pair should match global_omitted_position"
     
     # Check output file was created
     assert os.path.exists(output_path), f"Output file not created at {output_path}"
