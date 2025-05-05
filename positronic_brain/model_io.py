@@ -5,9 +5,67 @@ and managing model cache operations.
 """
 
 import torch
-from typing import Optional, Tuple, Dict, Any, Union
+import logging
+from typing import Optional, Tuple, Dict, Any, Union, List
 from transformers import AutoModelForCausalLM, AutoProcessor, AutoTokenizer
+
+# Configure logger for this module
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO)
+
+# Import DynamicCache class - newer versions call it Cache
+try:
+    # Adjust this import based on your exact transformers version if needed
+    from transformers.cache_utils import Cache as DynamicCache
+except ImportError:
+    try:
+        from transformers.utils import DynamicCache
+    except ImportError:
+        # If we can't import, define a placeholder for isinstance checks
+        logger.warning("Could not import DynamicCache type hint. Proceeding without specific type check.")
+        class DynamicCache:  # type: ignore
+            pass
+        print("Warning: Could not import DynamicCache from transformers")
+
 from .metrics import timed_histogram
+
+
+def freeze_dynamic_cache(dc: Any) -> Tuple[Tuple[torch.Tensor, torch.Tensor], ...]:
+    """
+    Return a static (immutable) tuple-of-tensors view of a DynamicCache 
+    without copying the underlying GPU storage.
+    
+    Args:
+        dc: A DynamicCache object containing key-value tensors
+        
+    Returns:
+        A tuple of tuples with tensor views, matching the legacy past_key_values format
+    """
+    static_layers = []
+    try:
+        # For transformers 4.37+ DynamicCache structure
+        for layer in dc.values():
+            # Each layer is a dict like {"key": K, "value": V}
+            k, v = layer["key"], layer["value"]
+            # We don't clone - just use the existing tensors directly
+            static_layers.append((k, v))
+    except (AttributeError, KeyError):
+        # Fallback for other DynamicCache implementations
+        print("[freeze_dynamic_cache] Warning: Using fallback mechanism for this DynamicCache structure")
+        # Try to access all possible known attributes to get layers
+        if hasattr(dc, "key_states") and hasattr(dc, "value_states"):
+            # Some implementations store as parallel lists
+            for k, v in zip(dc.key_states, dc.value_states):
+                static_layers.append((k, v))
+        elif hasattr(dc, "_key_states") and hasattr(dc, "_value_states"):
+            # Protected attribute version
+            for k, v in zip(dc._key_states, dc._value_states):
+                static_layers.append((k, v))
+    
+    if not static_layers:
+        print("[freeze_dynamic_cache] Error: Could not extract key-value tensors from DynamicCache!")
+    
+    return tuple(static_layers)
 
 
 @timed_histogram("model_io_load_model_seconds")
@@ -144,6 +202,7 @@ def execute_forward_pass(
         attention_mask: The attention mask for this pass.
         past_key_values: The KV cache from the previous step, if any.
         position_ids: Optional tensor containing the position IDs for the input tokens.
+        get_attentions: Whether to return attention weights.
 
     Returns:
         A tuple containing:
@@ -151,6 +210,16 @@ def execute_forward_pass(
         - new_past_key_values: The updated KV cache.
         - attentions: Attention weights (or None).
     """
+    logger.info("-" * 20)
+    logger.info(f"Executing forward pass...")
+    logger.info(f"  Input IDs shape: {input_ids.shape}")
+    pkv_type = type(past_key_values).__name__ if past_key_values is not None else "None"
+    logger.info(f"  Received past_key_values type: {pkv_type}")
+    if position_ids is not None:
+        logger.info(f"  Position IDs: {position_ids.tolist()}")
+    else:
+        logger.info(f"  Position IDs: None")
+    
     try:
         # Safety guard: when using past_key_values, only new tokens should be passed in input_ids
         if past_key_values is not None and input_ids.shape[1] > 1:
@@ -159,24 +228,57 @@ def execute_forward_pass(
         # Defensive check to ensure attention_mask matches input_ids length if provided
         if attention_mask is not None and attention_mask.shape[1] != input_ids.shape[1]:
             attention_mask = attention_mask[:, :input_ids.shape[1]]
-            
-        outputs = model(
-            input_ids=input_ids,
-            attention_mask=attention_mask,
-            past_key_values=past_key_values,
-            position_ids=position_ids,  # Add position_ids parameter
-            use_cache=True,
-            output_attentions=get_attentions  # Configurable based on new parameter
-        )
+        
+        # Use the original cache by default
+        _pkv_to_pass = past_key_values
+        
+        # Check if it's a DynamicCache instance and needs freezing
+        is_dynamic = isinstance(past_key_values, DynamicCache)
+        
+        if is_dynamic:
+            logger.warning("  Detected DynamicCache - freezing view to prevent mutation.")
+            try:
+                _pkv_to_pass = freeze_dynamic_cache(past_key_values)
+                logger.info(f"  Successfully created frozen view (type: {type(_pkv_to_pass).__name__}).")
+            except Exception as e:
+                logger.error(f"  Failed to freeze DynamicCache: {e}", exc_info=True)
+                # Raise error for safer handling
+                raise RuntimeError("Failed to create immutable view of DynamicCache") from e
+        else:
+            logger.info("  past_key_values is not DynamicCache or freezing is not needed.")
+        
+        # Execute the forward pass using the (potentially frozen) cache
+        with torch.no_grad():
+            outputs = model(
+                input_ids=input_ids,
+                attention_mask=attention_mask,
+                past_key_values=_pkv_to_pass,  # Use the frozen view or original PKV
+                position_ids=position_ids,
+                use_cache=True,
+                output_attentions=get_attentions
+            )
 
         logits = outputs.logits
-        new_kv_cache = outputs.past_key_values
+        returned_kv_cache = outputs.past_key_values
         # Use getattr for safer access to optional attributes like attentions
         attentions = getattr(outputs, 'attentions', None)
-
-        return logits, new_kv_cache, attentions
+        
+        # Log the type of cache returned by the model
+        returned_pkv_type = type(returned_kv_cache).__name__ if returned_kv_cache is not None else "None"
+        logger.info(f"  Model returned past_key_values type: {returned_pkv_type}")
+        if hasattr(returned_kv_cache, 'get_seq_length'):
+            logger.info(f"  Returned cache reports length: {returned_kv_cache.get_seq_length()}")
+        elif isinstance(returned_kv_cache, tuple) and returned_kv_cache and len(returned_kv_cache) > 0:
+            # Log tuple cache length if it has the expected structure
+            if returned_kv_cache[0] and isinstance(returned_kv_cache[0], tuple) and len(returned_kv_cache[0]) > 0:
+                logger.info(f"  Returned tuple cache first layer shape: {returned_kv_cache[0][0].shape}")
+        
+        logger.info("Forward pass execution finished.")
+        logger.info("-" * 20)
+        
+        return logits, returned_kv_cache, attentions
 
     except Exception as e:
-        print(f"[Model IO Error] Forward pass failed: {type(e).__name__} - {e}")
+        logger.error(f"[Model IO Error] Forward pass failed: {type(e).__name__} - {e}", exc_info=True)
         # Re-raise the exception to be handled by the main loop
         raise e

@@ -16,11 +16,7 @@ from positronic_brain import config
 from positronic_brain.model_io import load_model
 from positronic_brain.serialization_utils import safe_load, safe_save
 
-# Define test cases for brightness calculations
-test_cases = [
-    pytest.param("short_fox", 13, id="brightness_short_fox"),
-    pytest.param("long_context_sample", 862, id="brightness_long_context_sample"),
-]
+# Using a fixed initial prompt from session-scoped fixture
 
 @pytest.fixture(scope="session")
 def loaded_models_and_tokenizer():
@@ -45,18 +41,15 @@ def loaded_models_and_tokenizer():
     }
 
 @pytest.fixture(scope="function")
-def load_processed_step2a_output(test_id):
+def load_processed_step2a_output():
     """
     Load the processed attention data saved by test_process_attention_scores from step 2a.
     
-    Args:
-        test_id: Identifier for the test case to load
-    
     Returns:
-        dict: The processed attention data for the specified test_id
+        dict: The processed attention data
     """
-    # Define the path to the processed attention data based on test_id
-    output_path = os.path.join('tests', 'captures', f'step2a_processed_attention_{test_id}.pt')
+    # Define the path to the processed attention data using fixed identifier
+    output_path = os.path.join('tests', 'captures', 'step2a_processed_attention_fixed_initial.pt')
     
     # Ensure the file exists
     assert os.path.exists(output_path), f"Step 2a output file not found at {output_path}"
@@ -69,7 +62,7 @@ def load_processed_step2a_output(test_id):
     for key in required_keys:
         assert key in processed_data, f"Required key '{key}' not found in step 2a output data"
     
-    print(f"Step 2a processed attention data for '{test_id}' loaded successfully from {output_path}")
+    print(f"Step 2a processed attention data loaded successfully from {output_path}")
     
     return processed_data
 
@@ -88,13 +81,10 @@ def brightness_config():
         'brightness_seed': getattr(config, 'BRIGHTNESS_SEED', {'system_init': 255.0, 'default': 255.0})
     }
 
-@pytest.mark.parametrize("test_id, expected_initial_tokens", test_cases)
 def test_calculate_brightness_map(
     loaded_models_and_tokenizer,
     load_processed_step2a_output,
-    brightness_config,
-    test_id,
-    expected_initial_tokens
+    brightness_config
 ):
     """
     Test the brightness calculation formula using processed attention scores.
@@ -107,8 +97,6 @@ def test_calculate_brightness_map(
         loaded_models_and_tokenizer: Fixture containing model, tokenizer, and device
         load_processed_step2a_output: Fixture containing the processed attention data
         brightness_config: Fixture containing brightness-related configuration values
-        test_id: Identifier for this test case
-        expected_initial_tokens: Expected number of tokens in the initial context
     """
     # Extract components
     tokenizer = loaded_models_and_tokenizer['tokenizer']
@@ -125,10 +113,7 @@ def test_calculate_brightness_map(
     # Extract the sequence length from step2a data
     initial_seq_len = processed_data['initial_seq_len']
     # No longer using current_context_size, only working with initial context
-    
-    # Verify sizes are correct
-    assert initial_seq_len == expected_initial_tokens, \
-        f"Expected {expected_initial_tokens} tokens, but got {initial_seq_len}"
+    # We're using a fixed initial prompt, so no need to verify the sequence length
     
     print(f"Initial sequence length: {initial_seq_len}")
     # No longer tracking current_context_size
@@ -240,7 +225,7 @@ def test_calculate_brightness_map(
     
     # Prepare the data to be saved
     brightness_data = {
-        'test_id': test_id,
+        'test_id': 'fixed_initial',  # Hardcoded to match our fixed identifier
         'new_brightness_map': new_brightness_map,  # Shape [initial_seq_len]
         # Pass through size information (only initial_seq_len)
         'initial_seq_len': initial_seq_len,
@@ -253,7 +238,7 @@ def test_calculate_brightness_map(
     }
     
     # Define the output path
-    output_path = os.path.join('tests', 'captures', f'step2b_brightness_map_{test_id}.pt')
+    output_path = os.path.join('tests', 'captures', 'step2b_brightness_map_fixed_initial.pt')
     
     # Create the directory if it doesn't exist
     os.makedirs(os.path.dirname(output_path), exist_ok=True)

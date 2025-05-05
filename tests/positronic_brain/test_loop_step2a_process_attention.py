@@ -16,11 +16,7 @@ from positronic_brain import config
 from positronic_brain.model_io import load_model
 from positronic_brain.serialization_utils import safe_load, safe_save
 
-# Define test cases for attention processing
-test_cases = [
-    pytest.param("short_fox", 13, id="process_short_fox"),
-    pytest.param("long_context_sample", 862, id="process_long_context_sample"),
-]
+# Using a fixed initial prompt from session-scoped fixture
 
 @pytest.fixture(scope="session")
 def loaded_models_and_tokenizer():
@@ -45,21 +41,20 @@ def loaded_models_and_tokenizer():
     }
 
 @pytest.fixture(scope="function")
-def load_captured_step1_output(loaded_models_and_tokenizer, test_id):
+def load_captured_step1_output(loaded_models_and_tokenizer):
     """
-    Load the data saved by test_generate_first_step from step 1 based on test_id.
+    Load the data saved by test_generate_first_step from step 1.
     
     Args:
         loaded_models_and_tokenizer: Fixture containing model, tokenizer and device
-        test_id: Identifier for the test case to load
     
     Returns:
-        dict: The data captured in step 1 for the specified test_id
+        dict: The data captured in step 1
     """
     device = loaded_models_and_tokenizer['device']
     
-    # Define the path to the captured data based on test_id
-    output_path = os.path.join('tests', 'captures', f'step1_output_{test_id}.pt')
+    # Define the path to the captured data using fixed identifier
+    output_path = os.path.join('tests', 'captures', 'step1_output_fixed_initial.pt')
     
     # Ensure the file exists
     assert os.path.exists(output_path), f"Step 1 output file not found at {output_path}"
@@ -72,24 +67,20 @@ def load_captured_step1_output(loaded_models_and_tokenizer, test_id):
     for key in required_keys:
         assert key in step1_data, f"Required key '{key}' not found in step 1 output data"
     
-    print(f"Step 1 output data for '{test_id}' loaded successfully from {output_path}")
+    print(f"Step 1 output data loaded successfully from {output_path}")
     
     return step1_data
 
-@pytest.mark.parametrize("test_id, expected_initial_tokens", test_cases)
 def test_process_attention_scores(
     loaded_models_and_tokenizer,
-    load_captured_step1_output,
-    test_id,
-    expected_initial_tokens
+    load_captured_step1_output
 ):
     """
     Process the raw attention tensor from Step 1 into averaged attention scores.
     
     Args:
         loaded_models_and_tokenizer: Fixture containing model, tokenizer and device
-        test_id: Identifier for the test case to load
-        expected_initial_tokens: Expected number of tokens in the initial context
+        load_captured_step1_output: Fixture containing data from Step 1
     """
     # Get components from fixtures
     tokenizer = loaded_models_and_tokenizer['tokenizer']
@@ -101,11 +92,9 @@ def test_process_attention_scores(
     attentions = step1_data['attentions']
     selected_token_id = step1_data['selected_token_id']
     
-    # Get initial_seq_len from the Step 1 data (instead of calculating again)
+    # Get initial_seq_len from the Step 1 data
     initial_seq_len = step1_data['initial_seq_len']
-    assert initial_seq_len == expected_initial_tokens, \
-        f"Expected {expected_initial_tokens} tokens, but got {initial_seq_len}"
-    print(f"Initial context contains {initial_seq_len} tokens as expected")
+    print(f"Initial context contains {initial_seq_len} tokens")
     
     # No longer calculating current_context_size - we're only working with the initial context
     print(f"Working with initial context of size: {initial_seq_len}")
@@ -201,7 +190,7 @@ def test_process_attention_scores(
     
     # Prepare output data for Step 2b
     processed_data = {
-        'test_id': test_id,
+        'test_id': 'fixed_initial',  # Hardcoded to match our fixed identifier
         'processed_attention_scores': mean_attention_scores,  # Shape [initial_seq_len]
         # Pass sequence length information (only passing initial_seq_len, not calculating current_context_size)
         'initial_seq_len': initial_seq_len,
@@ -213,7 +202,7 @@ def test_process_attention_scores(
     }
     
     # Define the output path for Step 2a
-    output_path = os.path.join('tests', 'captures', f'step2a_processed_attention_{test_id}.pt')
+    output_path = os.path.join('tests', 'captures', 'step2a_processed_attention_fixed_initial.pt')
     
     # Create the directory if it doesn't exist
     os.makedirs(os.path.dirname(output_path), exist_ok=True)

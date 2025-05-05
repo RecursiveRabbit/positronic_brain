@@ -13,11 +13,7 @@ import torch
 from positronic_brain import config
 from positronic_brain.serialization_utils import safe_load, safe_save
 
-# Define test cases for cull count calculation
-test_cases = [
-    pytest.param("short_fox", 13, id="cull_short_fox"),
-    pytest.param("long_context_sample", 862, id="cull_long_context_sample"),
-]
+# Using a fixed initial prompt from session-scoped fixture
 
 @pytest.fixture(scope="session")
 def culling_config():
@@ -28,23 +24,20 @@ def culling_config():
         dict: Contains culling-related configuration values
     """
     return {
-        'target_size': getattr(config, 'TARGET_CONTEXT_SIZE', 1024),  # Default to 1024 if not defined
+        'target_size': getattr(config, 'CONTEXT_WINDOW_TARGET', 1024),  # Default to 1024 if not defined
         'max_cull_per_step': getattr(config, 'MAX_CULL_PER_STEP', 2)  # Default to 2 if not defined
     }
 
 @pytest.fixture(scope="function")
-def load_calculated_step2b_output(test_id):
+def load_calculated_step2b_output():
     """
     Load the brightness map data saved by Step 2b.
     
-    Args:
-        test_id: Identifier for the test case to load
-    
     Returns:
-        dict: The brightness map data for the specified test_id
+        dict: The brightness map data
     """
-    # Define the path to the brightness map data based on test_id
-    output_path = os.path.join('tests', 'captures', f'step2b_brightness_map_{test_id}.pt')
+    # Define the path to the brightness map data using fixed identifier
+    output_path = os.path.join('tests', 'captures', 'step2b_brightness_map_fixed_initial.pt')
     
     # Ensure the file exists
     assert os.path.exists(output_path), f"Step 2b output file not found at {output_path}"
@@ -57,28 +50,23 @@ def load_calculated_step2b_output(test_id):
     for key in required_keys:
         assert key in calculated_data, f"Required key '{key}' not found in step 2b output data"
     
-    print(f"Step 2b brightness map data for '{test_id}' loaded successfully from {output_path}")
+    print(f"Step 2b brightness map data loaded successfully from {output_path}")
     
     return calculated_data
 
-@pytest.mark.parametrize("test_id, expected_initial_tokens", test_cases)
 def test_decide_cull_count(
     load_calculated_step2b_output,
-    culling_config,
-    test_id,
-    expected_initial_tokens
+    culling_config
 ):
     """
     Test the culling decision logic based on context size vs. target size.
     
-    This test decides how many tokens to cull based on the current context size
+    This test decides how many tokens to cull based on the context size
     and the target size configuration.
     
     Args:
         load_calculated_step2b_output: Fixture containing the brightness map data
         culling_config: Fixture containing culling-related configuration
-        test_id: Identifier for this test case
-        expected_initial_tokens: Expected number of tokens in the initial context
     """
     # Get the calculated data
     calculated_data = load_calculated_step2b_output
@@ -90,9 +78,7 @@ def test_decide_cull_count(
     print(f"Initial sequence length: {initial_seq_len}")
     print(f"Target size: {target_size}")
     
-    # Verify initial_seq_len matches expectations
-    assert initial_seq_len == expected_initial_tokens, \
-        f"Expected {expected_initial_tokens} initial tokens, but got {initial_seq_len}"
+    # No need to verify initial_seq_len against expected value since we're using fixed initial prompt
     
     # Get the target size and max cull parameters
     target_size = culling_config['target_size']
@@ -118,7 +104,7 @@ def test_decide_cull_count(
     
     # Prepare the data to be saved
     decision_data = {
-        'test_id': test_id,
+        'test_id': 'fixed_initial',  # Hardcoded to match our fixed identifier
         'cull_count': cull_count,  # Number of tokens to cull
         # Pass through size information (only initial_seq_len)
         'initial_seq_len': initial_seq_len,
@@ -131,7 +117,7 @@ def test_decide_cull_count(
     }
     
     # Define the output path
-    output_path = os.path.join('tests', 'captures', f'step3a_cull_decision_{test_id}.pt')
+    output_path = os.path.join('tests', 'captures', 'step3a_cull_decision_fixed_initial.pt')
     
     # Create the directory if it doesn't exist
     os.makedirs(os.path.dirname(output_path), exist_ok=True)

@@ -24,7 +24,7 @@ PRUNING_INTERVAL = 20            # Interval for pruning the KV cache
 MAX_BEAM_SOURCES = 1             # Maximum number of beam sources for sampling
 
 # --- Context Window Configuration ---
-CONTEXT_WINDOW_TARGET = 1000  # Target size of KV cache after pruning
+CONTEXT_WINDOW_TARGET = 500  # Target size of KV cache after pruning
 
 # --- Pruning Configuration ---
 TEMPORAL_PENALTY_FACTOR = 0.005  # Factor for age-based pruning penalty
