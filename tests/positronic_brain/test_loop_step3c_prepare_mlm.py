@@ -24,7 +24,7 @@ import logging
 from transformers import AutoTokenizer
 
 # Add safe loading utility
-from .test_utils import safe_load
+from positronic_brain.utils.serialization import safe_load
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, 

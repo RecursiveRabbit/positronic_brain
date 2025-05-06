@@ -11,185 +11,15 @@ import os
 import pytest
 import torch
 
-# Import our test utilities
-from .test_utils import safe_save
-from .conftest import execute_forward_pass
+# Import our serialization utilities
+from positronic_brain.utils.serialization import safe_save
+from positronic_brain.model_io import execute_forward_pass
 from positronic_brain.manual_forward import manual_forward_step
-from dataclasses import dataclass, field
-from typing import Dict, Optional, List, Tuple, Any
+from positronic_brain.sampler import select_next_token, SamplerState
 
-# Define SamplerState directly in this file
-@dataclass
-class SamplerState:
-    """Configuration for token sampling parameters."""
-    temperature: float = 0.8       # Controls randomness (higher = more random)
-    top_k: int = 50                # Limits to top K most likely tokens (0 = disabled)
-    top_p: float = 0.9             # Nucleus sampling threshold (0.0-1.0)
-    repetition_penalty: float = 1.1  # Penalty for repeated tokens (1.0 = no penalty)
-    token_bias: Dict[int, float] = field(default_factory=dict)  # Bias specific tokens
-    
-# Token selection functions implemented directly in this file
-def _step1_top_k_filter(logits: torch.Tensor, k: int) -> torch.Tensor:
-    """Filter logits to keep only the top k values."""
-    if k <= 0:
-        return logits  # No filtering
-        
-    # Get top k values and their indices
-    values, _ = torch.topk(logits, k)
-    min_value = values[:, -1].unsqueeze(-1)
-    
-    # Create a mask for values less than the kth value
-    mask = logits < min_value
-    filtered_logits = logits.clone()
-    
-    # Set values below threshold to -inf
-    filtered_logits.masked_fill_(mask, float('-inf'))
-    return filtered_logits
-    
-def _step1_top_p_filter(logits: torch.Tensor, p: float) -> torch.Tensor:
-    """Filter logits using nucleus (top-p) sampling."""
-    if p <= 0.0 or p >= 1.0:
-        return logits  # No filtering
-        
-    # Sort logits in descending order
-    sorted_logits, sorted_indices = torch.sort(logits, descending=True)
-    
-    # Calculate cumulative probabilities
-    sorted_probs = torch.softmax(sorted_logits, dim=-1)
-    cumulative_probs = torch.cumsum(sorted_probs, dim=-1)
-    
-    # Remove tokens with cumulative probability above the threshold
-    sorted_indices_to_remove = cumulative_probs > p
-    
-    # Shift indices to the right to keep at least one token
-    sorted_indices_to_remove[..., 1:] = sorted_indices_to_remove[..., :-1].clone()
-    sorted_indices_to_remove[..., 0] = 0  # Keep at least one token
-    
-    # Scatter sorted indices back to original positions
-    indices_to_remove = sorted_indices_to_remove.scatter(
-        -1, sorted_indices, sorted_indices_to_remove
-    )
-    
-    # Set values to be removed to -inf
-    filtered_logits = logits.clone()
-    filtered_logits.masked_fill_(indices_to_remove, float('-inf'))
-    return filtered_logits
-    
-def _step1_apply_repetition_penalty(logits: torch.Tensor, input_ids: torch.Tensor, penalty: float) -> torch.Tensor:
-    """Apply repetition penalty to previously generated tokens."""
-    if penalty == 1.0:
-        return logits  # No penalty
-    
-    # Get unique token IDs from input_ids
-    unique_tokens = torch.unique(input_ids)
-    
-    # Create a penalty tensor initialized with 1.0
-    penalty_tensor = torch.ones_like(logits)
-    
-    # Set the penalty for tokens in input_ids
-    penalty_tensor.index_fill_(-1, unique_tokens, penalty)
-    
-    # Apply penalty (divide where logits > 0, multiply where logits < 0)
-    logits_sign = torch.sign(logits)
-    penalized_logits = logits.clone()
-    
-    # Penalize the logits by dividing or multiplying based on their sign
-    pos_mask = logits_sign > 0
-    neg_mask = logits_sign < 0
-    
-    penalized_logits.masked_scatter_(pos_mask, 
-                                   penalized_logits.masked_select(pos_mask) / penalty_tensor.masked_select(pos_mask))
-    penalized_logits.masked_scatter_(neg_mask, 
-                                   penalized_logits.masked_select(neg_mask) * penalty_tensor.masked_select(neg_mask))
-    
-    return penalized_logits
-    
-def _step1_apply_token_bias(logits: torch.Tensor, token_bias: Dict[int, float]) -> torch.Tensor:
-    """Apply bias values to specific token IDs."""
-    if not token_bias:
-        return logits  # No bias to apply
-    
-    # Create a bias tensor filled with zeros
-    bias_tensor = torch.zeros_like(logits)
-    
-    # Apply bias values to specific token IDs
-    for token_id, bias_value in token_bias.items():
-        bias_tensor[..., token_id] = bias_value
-    
-    # Add the bias to the logits
-    return logits + bias_tensor
 
-def select_next_token(logits: torch.Tensor, 
-                      input_ids: torch.Tensor, 
-                      sampler_state: SamplerState) -> Tuple[int, torch.Tensor, List[Dict[str, Any]]]:
-    """Select the next token based on logits and sampling parameters.
-    
-    Args:
-        logits: Model output logits for the next token prediction [batch_size, vocab_size]
-        input_ids: Input token IDs that generated these logits [batch_size, seq_len]
-        sampler_state: Configuration for sampling parameters
-        
-    Returns:
-        Tuple containing:
-        - selected_token_id: The ID of the selected token
-        - probs: Probability distribution after sampling
-        - top_tokens_info: Information about the top tokens considered
-    """
-    # Extract the last logits if there's a sequence dimension
-    if logits.dim() > 2:
-        logits = logits[:, -1, :]
-    
-    # Make a copy of the logits to avoid modifying the original
-    modified_logits = logits.clone()
-    
-    # Apply repetition penalty if needed
-    if sampler_state.repetition_penalty != 1.0:
-        modified_logits = _step1_apply_repetition_penalty(
-            modified_logits, input_ids, sampler_state.repetition_penalty
-        )
-    
-    # Apply token bias if provided
-    if sampler_state.token_bias:
-        modified_logits = _step1_apply_token_bias(
-            modified_logits, sampler_state.token_bias
-        )
-    
-    # Apply temperature if not 0
-    if sampler_state.temperature > 0:
-        modified_logits = modified_logits / sampler_state.temperature
-    
-    # Apply top-k filtering
-    if sampler_state.top_k > 0:
-        modified_logits = _step1_top_k_filter(modified_logits, sampler_state.top_k)
-    
-    # Apply top-p (nucleus) filtering
-    if 0.0 < sampler_state.top_p < 1.0:
-        modified_logits = _step1_top_p_filter(modified_logits, sampler_state.top_p)
-    
-    # Convert to probabilities
-    probs = torch.softmax(modified_logits, dim=-1)
-    
-    # Sample from the distribution
-    selected_token_id = torch.multinomial(probs, num_samples=1).item()
-    
-    # Get information about top tokens for debugging/logging
-    top_token_count = min(20, modified_logits.size(-1))
-    top_values, top_indices = torch.topk(probs, k=top_token_count)
-    
-    # Create info dictionaries for the top tokens
-    top_tokens_info = []
-    for i in range(top_token_count):
-        token_id = top_indices[0, i].item()
-        prob = top_values[0, i].item()
-        bias = sampler_state.token_bias.get(token_id, 0.0) if sampler_state.token_bias else 0.0
-        
-        top_tokens_info.append({
-            'token_id': token_id,
-            'probability': prob,
-            'bias': bias,
-        })
-    
-    return selected_token_id, probs, top_tokens_info
+
+
 
 
 @pytest.fixture(scope="function")
@@ -204,8 +34,7 @@ def default_sampler_state():
         temperature=0.8,  # Set non-zero temperature for testing
         top_p=0.9,
         top_k=50,
-        repetition_penalty=1.1,
-        token_bias={}
+        repetition_penalty=1.1
     )
 
 

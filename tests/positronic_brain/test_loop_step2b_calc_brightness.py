@@ -13,8 +13,8 @@ import pytest
 import torch
 
 from positronic_brain import config
-from .conftest import load_model
-from .test_utils import safe_load, safe_save
+from positronic_brain.model_io import load_model
+from positronic_brain.utils.serialization import safe_load, safe_save
 
 # Using a fixed initial prompt from session-scoped fixture
 

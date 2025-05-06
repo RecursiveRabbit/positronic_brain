@@ -1,28 +1,18 @@
 """
-Token sampling logic for the Positronic Brain inference engine.
-
-This module contains:
-1. SamplerState dataclass for configuration (previously in sampler_types.py)
-2. Sampling functions for token selection based on model output logits
+Token sampling logic for the Infinite Scroll inference engine.
+This module contains functions for sampling tokens based on model output logits
+with various strategies like temperature, top-k, top-p, repetition penalty, etc.
 """
 
 import torch
 import torch.nn.functional as F
-from dataclasses import dataclass, field
 from typing import Optional, Dict, Tuple, List
 
-@dataclass
-class SamplerState:
-    """Configuration state for token sampling operations."""
-    temperature: float = 1.0
-    top_k: int = 0
-    top_p: float = 1.0
-    repetition_penalty: float = 1.0
-    token_bias: Optional[Dict[int, float]] = None
+# Import the SamplerState dataclass definition 
+from .sampler_types import SamplerState
 
-    def __post_init__(self):
-        if self.token_bias is None:
-            self.token_bias = {}
+# Import metrics decorator
+from .metrics import timed_histogram
 
 
 def top_p_filter(logits, top_p):
@@ -63,6 +53,7 @@ def apply_repetition_penalty(logits, input_ids, penalty):
     return logits
 
 
+@timed_histogram("sampler_select_next_token_seconds")
 def select_next_token(
     logits: torch.Tensor,
     input_ids: torch.Tensor,  # Needed for repetition penalty

@@ -10,118 +10,10 @@ project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '../..'))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-# Import necessary components
+# Import the KVMirror class and other necessary components
+from positronic_brain.kv_mirror import KVMirror
 from positronic_brain import config
-from dataclasses import dataclass, field
-from typing import Dict, Optional, List, Any, Tuple, Union
-import time
-from transformers import AutoModelForCausalLM, AutoTokenizer
-import torch
-
-# Direct implementation of required model functions
-def load_model(model_name: str, trust_remote_code: bool = False):
-    """Load a model and tokenizer directly."""
-    print(f"Loading model {model_name}...")
-    
-    # Load the model
-    model = AutoModelForCausalLM.from_pretrained(
-        model_name,
-        trust_remote_code=trust_remote_code,
-        torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
-        device_map="auto"
-    )
-    model.eval()
-    
-    # Load the tokenizer
-    tokenizer = AutoTokenizer.from_pretrained(
-        model_name,
-        trust_remote_code=trust_remote_code,
-        padding_side="left"
-    )
-    
-    return model, tokenizer
-
-def execute_forward_pass(
-    model: AutoModelForCausalLM,
-    input_ids: torch.Tensor,
-    attention_mask: Optional[torch.Tensor],
-    past_key_values: Optional[Tuple] = None,
-    position_ids: Optional[torch.Tensor] = None,
-    get_attentions: bool = False
-):
-    """Execute a forward pass through the model."""
-    print("--------------------")
-    print("Executing forward pass...")
-    print(f"  Input IDs shape: {input_ids.shape}")
-    
-    # Capture start time for performance tracking
-    start_time = time.perf_counter()
-    
-    # Run the model's forward pass
-    with torch.no_grad():
-        outputs = model(
-            input_ids=input_ids,
-            attention_mask=attention_mask,
-            past_key_values=past_key_values,
-            position_ids=position_ids,
-            output_attentions=get_attentions,
-            use_cache=True,
-            return_dict=True
-        )
-    
-    # Extract results
-    logits = outputs.logits
-    past_key_values = outputs.past_key_values
-    attentions = outputs.attentions if get_attentions else None
-    
-    # Report cache information if available
-    if hasattr(past_key_values, 'get_seq_length'):
-        print(f"  Returned cache reports length: {past_key_values.get_seq_length()}")
-    
-    # Performance tracking
-    duration = time.perf_counter() - start_time
-    print(f"Forward pass execution finished in {duration:.4f}s")
-    print("--------------------")
-    
-    return logits, past_key_values, attentions
-
-# Simple KVMirror implementation directly in this file
-class TokenInfo:
-    """Information about a single token in the mirror."""
-    def __init__(self, token_id: int, position: int, source: str = 'system_init'):
-        self.token_id = token_id
-        self.position = position
-        self.source = source
-        self.timestamp = time.time()
-
-class KVMirror:
-    """Simple token tracking for tests. Maps positions to token info."""
-    def __init__(self):
-        self._tokens: Dict[int, TokenInfo] = {}  # position -> TokenInfo
-        self._lock = threading.RLock()
-        
-    def clear(self):
-        """Reset the mirror state."""
-        with self._lock:
-            self._tokens.clear()
-    
-    def add(self, token_id: int, position: int, source: str = 'system_init') -> int:
-        """Add a token to a position in the cache mirror."""
-        with self._lock:
-            # Create token info
-            token = TokenInfo(
-                token_id=token_id,
-                position=position,
-                source=source
-            )
-            # Store in mirror
-            self._tokens[position] = token
-            return position
-    
-    def get_current_size(self) -> int:
-        """Get the number of tokens in the mirror."""
-        with self._lock:
-            return len(self._tokens)
+from positronic_brain.model_io import load_model, execute_forward_pass
 
 # Load the long context sample for a more realistic test case
 def load_text_file(file_path):
@@ -147,17 +39,16 @@ else:
 @pytest.fixture
 def empty_mirror():
     """Provide a fresh, empty KVMirror."""
-    # Create a new mirror for the test
+    # Create a new empty mirror
     mirror = KVMirror()
-    mirror.clear()
     return mirror
 
 @pytest.fixture
 def populated_mirror(empty_mirror):
     """Provide a KVMirror with 10 tokens already added."""
-    mirror = empty_mirror # Start with a clean mirror
+    mirror = empty_mirror  # Start with a clean mirror
     for i in range(10):
-        mirror.add(i + 100, i)
+        mirror.append_token(token_id=i + 100, plaintext=f"token_{i}")
     return mirror
 
 @pytest.fixture(scope="session")
@@ -246,8 +137,10 @@ def initialized_session_state():
     print("(Session Fixture) Initializing KVMirror...")
     kv_mirror = KVMirror()
     for pos, token_id in enumerate(initial_input_ids[0].tolist()):
-        kv_mirror.add(token_id=token_id, position=pos, source='system_init')
-    print(f"(Session Fixture) KVMirror initialized with {kv_mirror.get_current_size()} tokens.")
+        # Convert token to plaintext using the tokenizer
+        plaintext = tokenizer.decode([token_id])
+        kv_mirror.append_token(token_id=token_id, plaintext=plaintext)
+    print(f"(Session Fixture) KVMirror initialized with {len(kv_mirror.kv_index)} tokens.")
 
     # --- Bundle and Return State ---
     session_state = {

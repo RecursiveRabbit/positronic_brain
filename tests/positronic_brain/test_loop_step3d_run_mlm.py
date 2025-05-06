@@ -25,7 +25,7 @@ from transformers import AutoTokenizer, AutoModelForMaskedLM
 
 # Add safe loading utility
 from positronic_brain import config
-from .test_utils import safe_load, safe_save
+from positronic_brain.utils.serialization import safe_load, safe_save
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, 
