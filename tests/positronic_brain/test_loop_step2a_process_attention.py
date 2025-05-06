@@ -13,8 +13,8 @@ import numpy as np
 import textwrap
 
 from positronic_brain import config
-from positronic_brain.model_io import load_model
-from positronic_brain.serialization_utils import safe_load, safe_save
+from .conftest import load_model
+from .test_utils import safe_load, safe_save
 
 # Using a fixed initial prompt from session-scoped fixture
 

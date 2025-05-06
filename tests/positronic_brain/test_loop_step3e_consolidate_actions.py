@@ -14,7 +14,7 @@ import os
 import pytest
 import torch
 
-from positronic_brain.serialization_utils import safe_load, safe_save
+from .test_utils import safe_load, safe_save
 from transformers import AutoTokenizer
 
 # Using a fixed initial prompt from session-scoped fixture

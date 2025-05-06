@@ -189,64 +189,45 @@ def manual_forward_step(
         value_states = value_states.transpose(1, 2)  # [batch, heads, seq, dim]
         
         # 3.4: Apply rotary positional embeddings (RoPE)
-        # Create our own LlamaRotaryEmbedding instance using model config parameters
-        logger.debug(f"Creating explicit LlamaRotaryEmbedding for layer {layer_idx}")
-        
-        # Extract required parameters from model config
-        max_position_embeddings = getattr(model.config, "max_position_embeddings", 2048)
-        rope_theta = getattr(model.config, "rope_theta", 10000.0)
-        rope_scaling = getattr(model.config, "rope_scaling", None)
-        rope_dim = head_dim  # Default to head_dim (usually correct for Llama models)
-        
-        # If model uses partial rotary embeddings, get the specified dimension
-        if hasattr(model.config, "rope_dim") and model.config.rope_dim is not None:
-            rope_dim = model.config.rope_dim
+        # First, check if the model already has a rotary embedding at the model level
+        if hasattr(model.model, 'rotary_emb'):
+            logger.debug(f"Using model's existing rotary_emb for layer {layer_idx}")
+            rotary_emb = model.model.rotary_emb
+        # If not at model level, try using decoder layer's rotary embedding (if available)
+        elif hasattr(decoder_layer.self_attn, 'rotary_emb'):
+            logger.debug(f"Using layer's existing rotary_emb for layer {layer_idx}")
+            rotary_emb = decoder_layer.self_attn.rotary_emb
+        # Otherwise, create our own LlamaRotaryEmbedding with minimal arguments
+        else:
+            logger.debug(f"Creating minimal LlamaRotaryEmbedding for layer {layer_idx}")
             
-        logger.debug(f"RoPE params: dim={rope_dim}, max_pos={max_position_embeddings}, theta={rope_theta}")
-        
-        # Explicitly create the rotary embedding instance
-        # Try different parameter naming conventions for different transformers versions
-        try:
-            # First attempt: newer transformers versions use 'dim'
-            logger.debug("Attempting LlamaRotaryEmbedding with 'dim' parameter")
-            rotary_emb = LlamaRotaryEmbedding(
-                dim=rope_dim,
-                max_position_embeddings=max_position_embeddings,
-                base=rope_theta,
-                device=query_states.device
-            )
-        except TypeError as e1:
-            logger.warning(f"RoPE initialization failed with 'dim' parameter: {e1}")
+            # Extract required parameters from model config
+            max_position_embeddings = getattr(model.config, "max_position_embeddings", 2048)
+            rope_theta = getattr(model.config, "rope_theta", 10000.0)
+            rope_dim = head_dim  # Default to head_dim (usually correct for Llama models)
+            
+            # If model uses partial rotary embeddings, get the specified dimension
+            if hasattr(model.config, "rope_dim") and model.config.rope_dim is not None:
+                rope_dim = model.config.rope_dim
+                
+            logger.debug(f"RoPE params: dim={rope_dim}, max_pos={max_position_embeddings}, theta={rope_theta}")
+            
+            # Based on error logs: LlamaRotaryEmbedding takes 2-3 positional arguments
             try:
-                # Second attempt: some versions might use 'dim_model'
-                logger.debug("Attempting LlamaRotaryEmbedding with 'dim_model' parameter")
-                rotary_emb = LlamaRotaryEmbedding(
-                    dim_model=rope_dim,
-                    max_position_embeddings=max_position_embeddings,
-                    base=rope_theta,
-                    device=query_states.device
-                )
-            except TypeError as e2:
-                logger.warning(f"RoPE initialization failed with 'dim_model' parameter: {e2}")
+                # Most common for this version: LlamaRotaryEmbedding(dim, max_seq, base=10000.0)
+                logger.debug("Attempting minimal LlamaRotaryEmbedding constructor with 2 args + base")
+                rotary_emb = LlamaRotaryEmbedding(rope_dim, max_position_embeddings, base=rope_theta)
+            except Exception as e1:
+                logger.warning(f"Minimal RoPE initialization failed: {e1}")
                 try:
-                    # Third attempt: try positional argument only
-                    logger.debug("Attempting LlamaRotaryEmbedding with positional argument")
-                    rotary_emb = LlamaRotaryEmbedding(
-                        rope_dim,
-                        max_position_embeddings=max_position_embeddings,
-                        base=rope_theta,
-                        device=query_states.device
-                    )
-                except TypeError as e3:
-                    logger.warning(f"RoPE initialization failed with positional argument: {e3}")
-                    # Final attempt: try all positional arguments
-                    logger.debug("Attempting LlamaRotaryEmbedding with all positional arguments")
-                    rotary_emb = LlamaRotaryEmbedding(
-                        rope_dim,
-                        max_position_embeddings,
-                        rope_theta,
-                        query_states.device
-                    )
+                    # Very minimal: just dimension and default max_seq
+                    logger.debug("Attempting bare minimum LlamaRotaryEmbedding constructor with just dim")
+                    rotary_emb = LlamaRotaryEmbedding(rope_dim)
+                except Exception as e2:
+                    logger.warning(f"Bare minimum RoPE initialization failed: {e2}")
+                    # Last resort: use a hardcoded approach for this specific model
+                    logger.warning("Using hardcoded rotary embedding as last resort")
+                    rotary_emb = LlamaRotaryEmbedding(rope_dim, max_position_embeddings)
         
         # Generate cos/sin caches based on sequence length
         # This returns cos/sin values for all positions up to seq_len

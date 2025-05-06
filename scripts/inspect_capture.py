@@ -18,13 +18,33 @@ project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-# Now import the safe_load utility
-try:
-    from positronic_brain.serialization_utils import safe_load
-except ImportError:
-    print("Error: Could not import safe_load from positronic_brain.serialization_utils.", file=sys.stderr)
-    print("Ensure the script is run from the project root or the positronic_brain package is installed.", file=sys.stderr)
-    sys.exit(1)
+# Local implementation of safe_load
+def safe_load(filename, default=None, device=None):
+    """Load an object from a file with error handling.
+    
+    Args:
+        filename: Path to the file to load
+        default: Default value to return if file doesn't exist
+        device: Device to map tensors to (if applicable)
+        
+    Returns:
+        The loaded object or default if file doesn't exist
+    """
+    if not os.path.exists(filename):
+        print(f"File not found: {filename}, returning default", file=sys.stderr)
+        return default
+        
+    try:
+        if device is not None:
+            return torch.load(filename, map_location=device)
+        else:
+            return torch.load(filename)
+    except Exception as e:
+        print(f"Error loading {filename}: {e}", file=sys.stderr)
+        if default is not None:
+            print(f"Returning default value instead", file=sys.stderr)
+            return default
+        raise
 
 def print_tensor_summary(tensor, max_elems=20, full_output=False):
     """Prints a summary of a tensor's shape, dtype, device, and optionally some data."""
