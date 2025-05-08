@@ -13,7 +13,14 @@ if project_root not in sys.path:
 # Import the KVMirror class and other necessary components
 from positronic_brain.kv_mirror import KVMirror
 from positronic_brain import config
-from positronic_brain.model_io import load_model, execute_forward_pass
+
+# Step 0: Model Loading stub (to be implemented in test_loop_step0_load_model.py)
+def load_model(model_name, trust_remote_code=False):
+    raise NotImplementedError("Torch-based explicit model loading required here.")
+
+# Step 1: Forward Pass Execution stub (to be implemented in test_loop_step1.py)
+def execute_forward_pass(model, input_ids, attention_mask, past_key_values, position_ids, get_attentions=False):
+    raise NotImplementedError("Custom forward pass implementation managing KV cache explicitly.")
 
 # Load the long context sample for a more realistic test case
 def load_text_file(file_path):
@@ -60,13 +67,19 @@ def initialized_session_state():
     print("\n--- (Session Fixture) Initializing Session State ---")
     
     # --- Load Model and Tokenizer ---
-    print(f"(Session Fixture) Loading model {config.MODEL_NAME}...")
-    model, tokenizer = load_model(
-        model_name=config.MODEL_NAME,
-        trust_remote_code=config.TRUST_REMOTE_CODE
-    )
-    device = next(model.parameters()).device
-    print(f"(Session Fixture) Model loaded on {device}")
+    print(f"(Session Fixture) Loading model would normally happen here...")
+    # Stub: In the real implementation, this would load the model
+    # model, tokenizer = load_model(
+    #     model_name=config.MODEL_NAME,
+    #     trust_remote_code=config.TRUST_REMOTE_CODE
+    # )
+    # device = next(model.parameters()).device
+    
+    # For now, we'll just create placeholder objects for testing
+    model = None
+    tokenizer = None
+    device = "cpu"
+    print(f"(Session Fixture) Stub model initialized on {device}")
     
     # --- Explicitly Disable Special Tokens in Tokenizer ---
     print("(Session Fixture) Disabling tokenizer's automatic special token additions...")
@@ -103,28 +116,23 @@ def initialized_session_state():
     initial_attention_mask = torch.ones_like(initial_input_ids, device=device)
 
     # --- Prime KV Cache ---
-    print("(Session Fixture) Priming initial KV cache with explicit tokens...")
-    _, primed_kv_cache, _ = execute_forward_pass(
-        model=model,
-        input_ids=initial_input_ids,
-        attention_mask=initial_attention_mask,
-        past_key_values=None,
-        position_ids=None,
-        get_attentions=False # No need for attentions during priming
-    )
-    print("(Session Fixture) Initial KV cache primed.")
+    print("(Session Fixture) Priming initial KV cache would normally happen here...")
+    # Stub: In the real implementation, this would execute a forward pass
+    # _, primed_kv_cache, _ = execute_forward_pass(
+    #     model=model,
+    #     input_ids=initial_input_ids,
+    #     attention_mask=initial_attention_mask,
+    #     past_key_values=None,
+    #     position_ids=None,
+    #     get_attentions=False # No need for attentions during priming
+    # )
     
-    # Get authoritative cache length from the cache object itself
-    try:
-        # For DynamicCache objects
-        cache_seq_len = primed_kv_cache.get_seq_length()
-    except AttributeError:
-        # For tuple caches
-        if isinstance(primed_kv_cache, tuple) and primed_kv_cache and isinstance(primed_kv_cache[0], tuple):
-            cache_seq_len = primed_kv_cache[0][0].shape[2]
-        else:
-            cache_seq_len = 0  # Fallback
-            print("WARNING: Could not determine cache sequence length!")
+    # For now, we'll just create a placeholder KV cache for testing
+    primed_kv_cache = {}
+    print("(Session Fixture) Stub KV cache initialized.")
+    
+    # For the stub implementation, we'll just use the input length as cache length
+    cache_seq_len = input_seq_len
     
     print(f"(Session Fixture) Primed KV cache reports length: {cache_seq_len}")
     

@@ -13,9 +13,36 @@ import torch
 
 # Import our serialization utilities
 from positronic_brain.utils.serialization import safe_save
-from positronic_brain.model_io import execute_forward_pass
-from positronic_brain.manual_forward import manual_forward_step
 from positronic_brain.sampler import select_next_token, SamplerState
+
+# Step 1: Forward Pass Execution implementation
+def execute_forward_pass(model, input_ids, attention_mask, past_key_values, position_ids, get_attentions=False):
+    """Custom implementation of forward pass with explicit KV cache management.
+    
+    This function will be implemented with a Torch-based approach that gives
+    explicit control over the forward pass execution and KV cache manipulation.
+    
+    Args:
+        model: The model to execute the forward pass on
+        input_ids: Token IDs to process
+        attention_mask: Attention mask for the tokens
+        past_key_values: KV cache from previous steps
+        position_ids: Explicit position IDs for tokens
+        get_attentions: Whether to return attention matrices
+        
+    Returns:
+        tuple: (logits, updated_kv_cache, attention_weights)
+    """
+    raise NotImplementedError("Custom forward pass implementation to be developed")
+
+# Optional manual forward step implementation
+def manual_forward_step(model, input_ids, attention_mask, past_key_values, position_ids=None):
+    """Step-by-step manual implementation of the forward pass for debugging.
+    
+    This provides even more fine-grained control than execute_forward_pass and
+    can be used to debug specific model behaviors.
+    """
+    raise NotImplementedError("Manual forward step implementation to be developed")
 
 
 
